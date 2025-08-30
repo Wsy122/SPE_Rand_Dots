@@ -1,0 +1,245 @@
+---
+title: "Analysis_exp1a"
+output:
+  html_document:
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: no
+  pdf_document:
+    toc: yes
+code_folding: show
+number_sections: yes
+---
+
+假设1：知觉匹配任务和知觉辨别任务均存在自我优势效应 假设2：难度对自我优势效应具有调节作用
+
+-   2.1 在匹配任务中，自我优势效应随难度的提升而降低
+-   2.2 在辨别任务中，自我优势效应随难度的提升而增加
+
+由于难度为有序分类变量，采用正交多项式编码（orthogonal polynomial coding），检验差异是否遵循某种趋势模式。
+
+-   线性对比（linear contrast)：检测是否存在单调递增递减关系；
+-   二项对比（quadratic contrast)：检测是否存在曲线关系（U型/倒U型）；
+-   三项对比（cubic contrast）：检测是否存在更复杂的波动模式
+
+参考： \> <https://stackoverflow.com/questions/41943789/how-does-r-handle-ordinal-predictors-in-lm>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+```
+
+下载和安装需要的R语言程序包
+
+```{r load libraries, message=FALSE, warning=FALSE}
+# install.packages(c("tidyverse", "BayesFactor", "here"))
+library(BayesFactor)#计算t检验和方差分析的贝叶斯因子
+library(brms)
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(effectsize)
+library(emmeans)
+library(ggplot2)
+library(here)
+# here::set_here("E:/project/Experiment/SPE_analysis_code")
+here()
+packageVersion("brms")
+options(scipen = 9)#将科学计数法改为在万后9位
+set.seed(1234)
+```
+
+## Loading Data and Setting Paths
+
+```{r load data and function}
+# load in function
+# source(here::here("SPE_analysis", "Code", "Functions", "Function_run_lmer.R"))
+# 改为相对路径
+source("../../SPE_analysis/Code/Functions/Function_run_lmer.R")
+
+# set paths
+# dataPath = here::here("SPE_analysis/Data/exp1a/CleanData/")
+# resultDir = here::here("SPE_analysis/Data/exp1a/CleanData/")
+# 改为相对路径
+dataPath <- "../../SPE_analysis/Data/exp1a/CleanData/"
+resultDir <- "../../SPE_analysis/Data/exp1a/CleanData/"
+
+# load in data
+data_motion <- read.csv(file = file.path(dataPath, "data_motion.csv"))
+data_color <- read.csv(file = file.path(dataPath, "data_color.csv"))
+df_motion_match <- read.csv(file = file.path(dataPath, "df_motion_diff_match.csv"))
+df_motion_rdk <- read.csv(file = file.path(dataPath, "df_motion_diff_rdk.csv"))
+df_color_match <- read.csv(file = file.path(dataPath, "df_color_diff_match.csv"))
+df_color_rdk <- read.csv(file = file.path(dataPath, "df_color_diff_rdk.csv"))
+
+# 将难度转换为因子型
+data_motion$difficulty <- ordered(data_motion$difficulty, levels = c("1", "2", "3", "4"))
+data_color$difficulty <- ordered(data_color$difficulty, levels = c("1", "2", "3", "4"))
+# 将数据按任务进行拆分
+data_color_match <- data_color %>%
+  dplyr::filter(part %in% c('match_RDK'))
+data_color_rdk <- data_color %>%
+  dplyr::filter(part %in% c('RDK'))
+
+data_motion_match <- data_motion %>%
+  dplyr::filter(part %in% c('match_RDK'))
+data_motion_rdk <- data_motion %>%
+  dplyr::filter(part %in% c('RDK'))
+```
+
+## Color
+
+### Bayesian Generalized Linear Model
+#### Correct
+
+```{r bayes glm color-acc}
+bglm_color_match_acc =  brm(
+  correct ~ association * difficulty + (1|subj_idx),
+  data = data_color_match,
+  family = "bernoulli",
+  control = list(adapt_delta = 0.99),
+  chains = 4, iter = 4000, warmup = 1000
+)
+
+bglm_color_rdk_acc =  brm(
+  correct ~ association * difficulty + (1|subj_idx),
+  data = data_color_rdk,
+  family = "bernoulli",
+  control = list(adapt_delta = 0.99),
+  chains = 4, iter = 4000, warmup = 1000
+)
+```
+
+```{r summary color-match-acc}
+summary(bglm_color_match_acc)
+```
+
+```{r summary color-rdk-acc}
+summary(bglm_color_rdk_acc)
+```
+
+
+```{r plot color match}
+ggplot(df_color_rdk, aes(x = difficulty, y = acc_diff_so, group = subj_idx)) +
+  geom_line(alpha = 0.5) +
+  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1) + labs(title = "SPE Across Difficulty Levels(Color rdk task ACC)") +
+  papaja::theme_apa(base_size = 18, # base_family = "Times"
+                    )
+```
+
+#### Reation Time
+
+```{r bayes glm color-match-rt}
+bglm_color_match_rt =  brm(
+  bf(
+    rt    ~ association * difficulty + (1|subj_idx),  # μ 子模型
+    sigma ~ association * difficulty + (1|subj_idx)   # σ 子模型
+  ),
+  data = data_color_match,
+  family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
+  control = list(adapt_delta = 0.99),
+  chains = 4, iter = 4000, warmup = 1000
+)
+```
+
+```{r summary color-match-rt}
+summary(bglm_color_match_rt)
+```
+
+```{r bayes glm color_rdk-rt}
+bglm_color_rdk_rt =  brm(
+  bf(
+    rt    ~ association * difficulty + (1|subj_idx),  # μ 子模型
+    sigma ~ association * difficulty + (1|subj_idx)   # σ 子模型
+  ),
+  data = data_color_rdk,
+  family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
+  control = list(adapt_delta = 0.99),
+  chains = 4, iter = 4000, warmup = 1000
+)
+```
+
+```{r summary color-rdk-rt}
+summary(bglm_color_rdk_rt)
+```
+
+## Motion
+
+### Bayesian Generalized Linear Model
+
+#### Correct
+
+```{r bayes glm motion-acc}
+bglm_motion_match_acc =  brm(
+ correct ~ association * difficulty + (1|subj_idx),
+  data = data_motion_match,
+  family = "bernoulli",
+  control = list(adapt_delta = 0.99),
+  chains = 4, iter = 4000, warmup = 1000
+)
+
+bglm_motion_rdk_acc =  brm(
+  correct ~ association * difficulty + (1|subj_idx),
+  data = data_motion_rdk,
+  family = "bernoulli",
+  control = list(adapt_delta = 0.99),
+  chains = 4, iter = 4000, warmup = 1000
+)
+```
+
+```{r summary motion-match-acc}
+summary(bglm_motion_match_acc)
+```
+
+```{r summary motion-rdk-acc}
+summary(bglm_motion_rdk_acc)
+```
+
+
+```{r plot motion match}
+ggplot(df_motion_rdk, aes(x = difficulty, y = acc_diff_so, group = subj_idx)) +
+  geom_line(alpha = 0.5) +
+  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1) + labs(title = "SPE Across Difficulty Levels(Motion rdk task ACC)") +
+  papaja::theme_apa(base_size = 18, # base_family = "Times"
+                    )
+```
+
+#### Reation Time
+
+```{r bayes glm motion-rt}
+# match task
+bglm_motion_match_rt =  brm(
+  bf(
+    rt    ~ association * difficulty + (1|subj_idx),  # μ 子模型
+    sigma ~ association * difficulty + (1|subj_idx)   # σ 子模型
+  ),
+  data = data_motion_match,
+  family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
+  control = list(adapt_delta = 0.99),
+  chains = 4, iter = 4000, warmup = 1000
+)
+
+# rdk task
+bglm_motion_rdk_rt =  brm(
+  bf(
+    rt    ~ association * difficulty + (1|subj_idx),  # μ 子模型
+    sigma ~ association * difficulty + (1|subj_idx)   # σ 子模型
+  ),
+  data = data_motion_rdk,
+  family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
+  control = list(adapt_delta = 0.99),
+  chains = 4, iter = 4000, warmup = 1000
+)
+```
+
+```{r summary motion-match-rt}
+summary(bglm_motion_match_rt)
+```
+
+
+```{r summary motion-rdk-rt}
+summary(bglm_motion_rdk_rt)
+```
+
+
