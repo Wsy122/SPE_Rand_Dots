@@ -1,0 +1,186 @@
+---
+title: "Analysis_exp1a"
+output:
+  html_document:
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: no
+  pdf_document:
+    toc: yes
+code_folding: show
+number_sections: yes
+---
+
+假设1：知觉匹配任务和知觉辨别任务均存在自我优势效应
+假设2：难度对自我优势效应具有调节作用
+
+- 2.1 在匹配任务中，自我优势效应随难度的提升而降低
+- 2.2 在辨别任务中，自我优势效应随难度的提升而增加
+
+
+构建回归模型（混合效应模型），检验效应随难度的变化趋势
+
+- 用lmer快速检验
+- 用brm构建贝叶斯模型
+- 构建分层模型（response为0，1）
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+```
+
+下载和安装需要的R语言程序包
+
+```{r load libraries, message=FALSE, warning=FALSE}
+# install.packages(c("tidyverse", "BayesFactor", "here"))
+library(BayesFactor)#计算t检验和方差分析的贝叶斯因子
+library(brms)
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(effectsize)
+library(emmeans)
+library(ggplot2)
+library(here)
+# here::set_here("E:/project/Experiment/SPE_analysis_code")
+here()
+packageVersion("brms")
+options(scipen = 9)#将科学计数法改为在万后9位
+set.seed(1234)
+```
+
+## Loading Data and Setting Paths
+```{r load data and function}
+# load in function
+# source(here::here("SPE_analysis", "Code", "Functions", "Function_run_lmer.R"))
+# 改为相对路径
+source("../../SPE_analysis/Code/Functions/Function_run_lmer.R")
+
+# set paths
+# dataPath = here::here("SPE_analysis/Data/exp1a/CleanData/")
+# resultDir = here::here("SPE_analysis/Data/exp1a/CleanData/")
+# 改为相对路径
+dataPath <- "../../SPE_analysis/Data/exp1a/CleanData/"
+resultDir <- "../../SPE_analysis/Data/exp1a/CleanData/"
+
+# load in data
+data_motion <- read.csv(file = file.path(dataPath, "data_motion.csv"))
+data_color <- read.csv(file = file.path(dataPath, "data_color.csv"))
+df_motion_match <- read.csv(file = file.path(dataPath, "df_motion_diff_match.csv"))
+df_motion_rdk <- read.csv(file = file.path(dataPath, "df_motion_diff_rdk.csv"))
+df_color_match <- read.csv(file = file.path(dataPath, "df_color_diff_match.csv"))
+df_color_rdk <- read.csv(file = file.path(dataPath, "df_color_diff_rdk.csv"))
+
+# 将难度转换为因子型
+# df_color_match$difficulty <- factor(df_color_match$difficulty, levels = 1:4)
+```
+
+## Color 
+### Lmer
+```{r lmer color, message=FALSE}
+# match task
+run_lmer(df_color_match, 'acc_diff_so')
+run_lmer(df_color_match, 'rt_diff_os')
+
+# rdk task
+run_lmer(df_color_rdk, 'acc_diff_so')
+run_lmer(df_color_rdk, 'rt_diff_os')
+```
+
+
+### Bayesian Linear Model
+```{r bayes color}
+blm_color_match = brm(acc_diff_so ~ difficulty + (1|subj_idx), data = df_color_match, save_pars = save_pars(all=TRUE), control = list(adapt_delta = 0.9), sample_prior=T, chains=4, iter=5000, warmup=1000, cores=2)
+
+blm_color_rdk = brm(acc_diff_so ~ difficulty + (1|subj_idx), data = df_color_rdk, save_pars = save_pars(all=TRUE), control = list(adapt_delta = 0.9), sample_prior=T, chains=4, iter=5000, warmup=1000, cores=2)
+```
+```{r}
+blm_color_match
+```
+
+```{r}
+blm_color_rdk
+```
+
+```{r plot color match}
+ggplot(df_color_match, aes(x = difficulty, y = acc_diff_so, group = subj_idx)) +
+  geom_line(alpha = 0.5) +
+  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1) + labs(title = "SPE Across Difficulty Levels(Motion match task ACC)") +
+  papaja::theme_apa(base_size = 18, # base_family = "Times"
+                    )
+```
+
+### Bayesian Generalized Linear Model
+```{r bayes glm color}
+data_color_match <- data_color %>%
+  dplyr::filter(part %in% c('match_RDK'))
+
+data_color_rdk <- data_color %>%
+  dplyr::filter(part %in% c('RDK'))
+
+
+bglm_color_match = brm(correct ~ association*difficulty + (1|subj_idx), data = data_color_match, family = bernoulli, save_pars = save_pars(all=TRUE), control = list(adapt_delta = 0.9), sample_prior=T, chains=4, iter=5000, warmup=1000, cores=2)
+
+bglm_color_rdk = brm(correct ~ association*difficulty + (1|subj_idx), data = data_color_rdk, family = bernoulli, save_pars = save_pars(all=TRUE), control = list(adapt_delta = 0.9), sample_prior=T, chains=4, iter=5000, warmup=1000, cores=2)
+```
+
+```{r summary color match}
+summary(bglm_color_match)
+```
+
+```{r summary color rdk}
+summary(bglm_color_rdk)
+```
+
+- Intercept = 2.87
+- β₁ = -0.21（association 的主效应）
+- β₂ = -0.63（difficulty 的主效应）
+- β₃ = 0.12（交互项效应）
+
+## Motion
+### Lmer
+```{r lmer motion}
+# match task
+run_lmer(df_motion_match, 'acc_diff_so')
+run_lmer(df_motion_match, 'rt_diff_os')
+
+# rdk task
+run_lmer(df_motion_rdk, 'acc_diff_so')
+run_lmer(df_motion_rdk, 'rt_diff_os')
+```
+
+### Bayesian Linear Model
+```{r bayes motion}
+blm_motion_match = brm(acc_diff_so ~ difficulty + (1|subj_idx), data = df_color_match, save_pars = save_pars(all=TRUE), control = list(adapt_delta = 0.9), sample_prior=T, chains=4, iter=5000, warmup=1000, cores=2)
+
+blm_motion_rdk = brm(acc_diff_so ~ difficulty + (1|subj_idx), data = df_color_rdk, save_pars = save_pars(all=TRUE), control = list(adapt_delta = 0.9), sample_prior=T, chains=4, iter=5000, warmup=1000, cores=2)
+
+summary(blm_motion_match)
+summary(blm_motion_rdk)
+```
+
+```{r plot motion match}
+ggplot(df_motion_match, aes(x = difficulty, y = acc_diff_so, group = subj_idx)) +
+  geom_line(alpha = 0.5) +
+  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1) + labs(title = "SPE Across Difficulty Levels(Motion match task ACC)") +
+  papaja::theme_apa(base_size = 18, # base_family = "Times"
+                    )
+```
+
+### Bayesian Generalized Linear Model
+```{r bayes glm motion}
+data_motion_match <- data_motion %>%
+  dplyr::filter(part %in% c('match_RDK'))
+
+data_motion_rdk <- data_motion %>%
+  dplyr::filter(part %in% c('RDK'))
+
+
+bglm_motion_match = brm(correct ~ association*difficulty + (1|subj_idx), data = data_motion_match, family = bernoulli, save_pars = save_pars(all=TRUE), control = list(adapt_delta = 0.9), sample_prior=T, chains=4, iter=5000, warmup=1000, cores=2)
+
+bglm_motion_rdk = brm(correct ~ association*difficulty + (1|subj_idx), data = data_motion_rdk, family = bernoulli, save_pars = save_pars(all=TRUE), control = list(adapt_delta = 0.9), sample_prior=T, chains=4, iter=5000, warmup=1000, cores=2)
+
+summary(bglm_motion_match)
+summary(bglm_motion_rdk)
+```
