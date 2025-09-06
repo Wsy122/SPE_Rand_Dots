@@ -56,14 +56,14 @@ set.seed(1234)
 # load in function
 # source(here::here("SPE_analysis", "Code", "Functions", "Function_run_lmer.R"))
 # 改为相对路径
-source("../../SPE_analysis/Code/Functions/Function_run_lmer.R")
+source("../../SPE_analysis/2_Code/Functions/Function_run_lmer.R")
 
 # set paths
 # dataPath = here::here("SPE_analysis/Data/exp1a/CleanData/")
 # resultDir = here::here("SPE_analysis/Data/exp1a/CleanData/")
 # 改为相对路径
-dataPath <- "../../SPE_analysis/Data/exp1a/CleanData/"
-resultDir <- "../../SPE_analysis/Data/exp1a/CleanData/"
+dataPath <- "../../SPE_analysis/3_Data/exp1a/CleanData/"
+resultDir <- "../../SPE_analysis/3_Data/exp1a/CleanData/"
 
 # load in data
 data_motion <- read.csv(file = file.path(dataPath, "data_motion.csv"))
@@ -73,9 +73,14 @@ df_motion_rdk <- read.csv(file = file.path(dataPath, "df_motion_diff_rdk.csv"))
 df_color_match <- read.csv(file = file.path(dataPath, "df_color_diff_match.csv"))
 df_color_rdk <- read.csv(file = file.path(dataPath, "df_color_diff_rdk.csv"))
 
-# 将难度转换为因子型
+# 将难度转换为因子型(顺序变量)
 data_motion$difficulty <- ordered(data_motion$difficulty, levels = c("1", "2", "3", "4"))
 data_color$difficulty <- ordered(data_color$difficulty, levels = c("1", "2", "3", "4"))
+df_motion_match$difficulty <- ordered(df_motion_match$difficulty, levels = c("1", "2", "3", "4"))
+df_motion_rdk$difficulty <- ordered(df_motion_rdk$difficulty, levels = c("1", "2", "3", "4"))
+df_color_match$difficulty <- ordered(df_color_match$difficulty, levels = c("1", "2", "3", "4"))
+df_color_rdk$difficulty <- ordered(df_color_rdk$difficulty, levels = c("1", "2", "3", "4"))
+
 # 将数据按任务进行拆分
 data_color_match <- data_color %>%
   dplyr::filter(part %in% c('match_RDK'))
@@ -94,29 +99,46 @@ data_motion_rdk <- data_motion %>%
 #### Correct
 
 ```{r bayes glm color-acc}
-bglm_color_match_acc =  brm(
-  correct ~ association * difficulty + (1|subj_idx),
+# match task
+m0_color_match_acc =  brm(
+  correct ~ association + difficulty + (1|subj_idx),
   data = data_color_match,
   family = "bernoulli",
-  control = list(adapt_delta = 0.99),
+  control = list(adapt_delta = 0.95),
   chains = 4, iter = 4000, warmup = 1000
 )
 
-bglm_color_rdk_acc =  brm(
+## SPE
+m1_color_match_spe =  brm(
+  acc_diff_so ~ difficulty + (1|subj_idx),
+  data = df_color_match,
+  control = list(adapt_delta = 0.95),
+  chains = 4, iter = 4000, warmup = 1000
+)
+
+# rdk task
+m2_color_rdk_acc =  brm(
   correct ~ association * difficulty + (1|subj_idx),
   data = data_color_rdk,
   family = "bernoulli",
-  control = list(adapt_delta = 0.99),
+  control = list(adapt_delta = 0.95),
+  chains = 4, iter = 4000, warmup = 1000
+)
+
+
+m3_color_rdk_spe =  brm(
+  acc_diff_so ~ difficulty + (1|subj_idx),
+  data = df_color_rdk,
+  control = list(adapt_delta = 0.95),
   chains = 4, iter = 4000, warmup = 1000
 )
 ```
 
-```{r summary color-match-acc}
-summary(bglm_color_match_acc)
-```
-
-```{r summary color-rdk-acc}
-summary(bglm_color_rdk_acc)
+```{r summary}
+summary(m0_color_match_acc)
+summary(m1_color_match_spe)
+summary(m2_color_rdk_acc)
+summary(m3_color_rdk_spe)
 ```
 
 
@@ -130,38 +152,47 @@ ggplot(df_color_rdk, aes(x = difficulty, y = acc_diff_so, group = subj_idx)) +
 
 #### Reation Time
 
-```{r bayes glm color-match-rt}
-bglm_color_match_rt =  brm(
-  bf(
-    rt    ~ association * difficulty + (1|subj_idx),  # μ 子模型
-    sigma ~ association * difficulty + (1|subj_idx)   # σ 子模型
-  ),
+```{r bayes glm color-rt}
+# match task
+m0_color_match_rt =  brm(
+  rt    ~ association * difficulty + (1|subj_idx),
   data = data_color_match,
   family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
-  control = list(adapt_delta = 0.99),
+  control = list(adapt_delta = 0.95),
+  chains = 4, iter = 4000, warmup = 1000
+)
+
+## SPE
+m1_color_match_speRT =  brm(
+  rt_diff_os ~ difficulty + (1|subj_idx),
+  data = df_color_match,
+  control = list(adapt_delta = 0.95),
+  chains = 4, iter = 4000, warmup = 1000
+)
+
+# RDK task
+m2_color_rdk_rt =  brm(
+  rt    ~ association * difficulty + (1|subj_idx),
+  data = data_color_rdk,
+  family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
+  control = list(adapt_delta = 0.95),
+  chains = 4, iter = 4000, warmup = 1000
+)
+
+# SPE
+m3_color_rdk_speRT =  brm(
+  rt_diff_os ~ difficulty + (1|subj_idx),
+  data = df_color_rdk,
+  control = list(adapt_delta = 0.95),
   chains = 4, iter = 4000, warmup = 1000
 )
 ```
 
 ```{r summary color-match-rt}
-summary(bglm_color_match_rt)
-```
-
-```{r bayes glm color_rdk-rt}
-bglm_color_rdk_rt =  brm(
-  bf(
-    rt    ~ association * difficulty + (1|subj_idx),  # μ 子模型
-    sigma ~ association * difficulty + (1|subj_idx)   # σ 子模型
-  ),
-  data = data_color_rdk,
-  family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
-  control = list(adapt_delta = 0.99),
-  chains = 4, iter = 4000, warmup = 1000
-)
-```
-
-```{r summary color-rdk-rt}
-summary(bglm_color_rdk_rt)
+summary(m0_color_match_rt)
+summary(m1_color_match_speRT)
+summary(m2_color_rdk_rt)
+summary(m3_color_rdk_speRT)
 ```
 
 ## Motion
@@ -171,29 +202,43 @@ summary(bglm_color_rdk_rt)
 #### Correct
 
 ```{r bayes glm motion-acc}
-bglm_motion_match_acc =  brm(
+m0_motion_match_acc =  brm(
  correct ~ association * difficulty + (1|subj_idx),
   data = data_motion_match,
   family = "bernoulli",
-  control = list(adapt_delta = 0.99),
+  control = list(adapt_delta = 0.95),
   chains = 4, iter = 4000, warmup = 1000
 )
 
-bglm_motion_rdk_acc =  brm(
+# SPE
+m1_motion_match_spe =  brm(
+  acc_diff_so ~ difficulty + (1|subj_idx),
+  data = df_motion_match,
+  control = list(adapt_delta = 0.95),
+  chains = 4, iter = 4000, warmup = 1000
+)
+
+m2_motion_rdk_acc =  brm(
   correct ~ association * difficulty + (1|subj_idx),
   data = data_motion_rdk,
   family = "bernoulli",
-  control = list(adapt_delta = 0.99),
+  control = list(adapt_delta = 0.95),
+  chains = 4, iter = 4000, warmup = 1000
+)
+
+m3_motion_rdk_spe =  brm(
+  acc_diff_so ~ difficulty + (1|subj_idx),
+  data = df_motion_rdk,
+  control = list(adapt_delta = 0.95),
   chains = 4, iter = 4000, warmup = 1000
 )
 ```
 
-```{r summary motion-match-acc}
-summary(bglm_motion_match_acc)
-```
-
-```{r summary motion-rdk-acc}
-summary(bglm_motion_rdk_acc)
+```{r summary motion-acc}
+summary(m0_motion_match_acc)
+summary(m1_motion_rdk_acc)
+summary(m2_motion_match_spe)
+summary(m3_motion_rdk_spe)
 ```
 
 
@@ -209,37 +254,44 @@ ggplot(df_motion_rdk, aes(x = difficulty, y = acc_diff_so, group = subj_idx)) +
 
 ```{r bayes glm motion-rt}
 # match task
-bglm_motion_match_rt =  brm(
-  bf(
-    rt    ~ association * difficulty + (1|subj_idx),  # μ 子模型
-    sigma ~ association * difficulty + (1|subj_idx)   # σ 子模型
-  ),
+m0_motion_match_rt =  brm(
+  rt ~ association * difficulty + (1|subj_idx),
   data = data_motion_match,
   family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
-  control = list(adapt_delta = 0.99),
+  control = list(adapt_delta = 0.95),
+  chains = 4, iter = 4000, warmup = 1000
+)
+
+## SPE
+m1_motion_match_speRT =  brm(
+  rt_diff_os ~ difficulty + (1|subj_idx),
+  data = df_motion_match,
+  control = list(adapt_delta = 0.95),
   chains = 4, iter = 4000, warmup = 1000
 )
 
 # rdk task
-bglm_motion_rdk_rt =  brm(
-  bf(
-    rt    ~ association * difficulty + (1|subj_idx),  # μ 子模型
-    sigma ~ association * difficulty + (1|subj_idx)   # σ 子模型
-  ),
+m2_motion_rdk_rt =  brm(
+  rt ~ association * difficulty + (1|subj_idx),
   data = data_motion_rdk,
   family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
-  control = list(adapt_delta = 0.99),
+  control = list(adapt_delta = 0.95),
+  chains = 4, iter = 4000, warmup = 1000
+)
+
+## SPE
+m3_motion_rdk_speRT =  brm(
+  rt_diff_os ~ difficulty + (1|subj_idx),
+  data = df_motion_rdk,
+  control = list(adapt_delta = 0.95),
   chains = 4, iter = 4000, warmup = 1000
 )
 ```
 
-```{r summary motion-match-rt}
-summary(bglm_motion_match_rt)
+```{r summary motion-rt}
+summary(m0_motion_match_rt)
+summary(m1_motion_rdk_rt)
+summary(m2_motion_match_speRT)
+summary(m3_motion_rdk_speRT)
 ```
-
-
-```{r summary motion-rdk-rt}
-summary(bglm_motion_rdk_rt)
-```
-
 
