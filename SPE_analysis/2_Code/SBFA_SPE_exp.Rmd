@@ -26,6 +26,7 @@ editor_options:
         -   关联类型的主效应
         -   关联类型与难度的交互作用
 -   **研究的关键假设：**在任意一个知觉辨别的难度下，当知觉辨别任务不直接与自我相关时，是否仍然存在自我优势效应？这一关键研究假设是本研究决定何时停止数据收集的关键效应量
+-   在此处只检验是否存在交互作用
 
 
 ```{r}
@@ -37,6 +38,7 @@ rm(list = ls())
 ```{r message=FALSE, warning=FALSE}
 # install.packages(c("tidyverse", "BayesFactor", "here"))
 library(BayesFactor)#计算t检验和方差分析的贝叶斯因子
+packageVersion("BayesFactor")
 library(tidyverse)
 library(showtext)#解决中文字体无法显示问题
 library(latex2exp)#latex语法
@@ -49,27 +51,22 @@ here()
 options(scipen = 9)#将科学计数法改为在万后9位
 set.seed(1234)
 ```
+
 加载函数
-```{r}
-source(here::here("SPE_analysis/Code/Functions/Function_bf_avo.R"))
-source(here::here("SPE_analysis/Code/Functions/Function_bf_pairwise_tests.R"))
-source(here::here("SPE_analysis/Code/Functions/Function_plot_avo.R"))
-source(here::here("SPE_analysis/Code/Functions/Function_plot_ttest.R"))
-```
-
-BayesFacotr包版本
 
 ```{r}
-packageVersion("BayesFactor")
+source(here::here("SPE_analysis/2_Code/Functions/Function_bf_avo.R"))
+source(here::here("SPE_analysis/2_Code/Functions/Function_bf_pairwise_tests.R"))
+source(here::here("SPE_analysis/2_Code/Functions/Function_plot_avo.R"))
+source(here::here("SPE_analysis/2_Code/Functions/Function_plot_ttest.R"))
 ```
-
 
 ## 读取清洗后的数据
 
 ```{r}
 # 文件路径和文件名根据实际情况调整
 # 设置目标文件夹相对路径
-folder_path <- "../Data/exp1a/CleanData"
+folder_path <- "../3_Data/exp1a/CleanData"
 
 # 列出目标文件
 file_list <- list.files(
@@ -150,142 +147,10 @@ plot_bfs_int <- plot_aov(bfs_association_mm_rt, 'bfs_int', 'Interaction: motion 
 plot_bfs_int
 ```
 
-##### 关联类型和难度的交互效应
-
-###### ACC
-
-```{r}
-# 调用函数进行不同条件的两两比较
-bfs_int_diff_mm_acc <- bf_pairwise_tests(df_motion_diff_match, "acc_diff_so_")
-
-# 提取BF值到数据框
-bfs_int_diff_mm_acc <- do.call(rbind, lapply(names(bfs_int_diff_mm_acc), function(iter){
-  do.call(rbind, lapply(names(bfs_int_diff_mm_acc[[iter]]), function(comparison){
-    data.frame(
-      subj_idx = iter,
-      Effect = comparison,
-      BFs = bfs_int_diff_mm_acc[[iter]][[comparison]]$BF,
-      Direction = bfs_int_diff_mm_acc[[iter]][[comparison]]$Direction
-    )
-  }))
-})) %>%
-  mutate(subj_idx = as.numeric(subj_idx))
-
-bfs_int_diff_mm_acc
-```
-
-**可视化**
-
-```{r}
-plot_bfs_1vs2 <-  
-  plot_ttest(bfs_int_diff_mm_acc, '1 vs 2', 'difficulty1 > difficulty2: motion match task(ACC)')
-plot_bfs_1vs2
-
-plot_bfs_1vs3 <- 
-  plot_ttest(bfs_int_diff_mm_acc, '1 vs 3', 'difficulty1 > difficulty3: motion match task(ACC)')
-plot_bfs_1vs3
-
-plot_bfs_1vs4 <-  
-  plot_ttest(bfs_int_diff_mm_acc, '1 vs 4', 'difficulty1 > difficulty4: motion match task(ACC)')
-plot_bfs_1vs4
-
-plot_bfs_2vs3 <- 
-  plot_ttest(bfs_int_diff_mm_acc, '2 vs 3', 'difficulty2 > difficulty3: motion match task(ACC)')
-plot_bfs_2vs3
-
-plot_bfs_2vs4 <-  
-  plot_ttest(bfs_int_diff_mm_acc, '2 vs 4', 'difficulty2 > difficulty4: motion match task(ACC)')
-plot_bfs_2vs4
-
-plot_bfs_3vs4 <- 
-  plot_ttest(bfs_int_diff_mm_acc, '3 vs 4', 'difficulty3 > difficulty4: motion match task(ACC)')
-plot_bfs_3vs4
-```
-
-**查看数据的变化趋势**
-
-```{r}
-# 转为长数据
-df_motion_diff_match_long <- df_motion_diff_match %>% 
-  tidyr::pivot_longer(
-    cols = starts_with(c("acc_diff_so", "rt_diff_os")),
-    names_to = c(".value", "difficulty"),
-    names_pattern = "^(acc_diff|rt_diff)_[^_]+_(\\d+)$",  # 简化正则表达式
-    values_drop_na = TRUE
-  )
-
-ggplot(df_motion_diff_match_long, aes(x = difficulty, y = acc_diff, group = subj_idx)) +
-  geom_line(alpha = 0.5) +
-  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1) + labs(title = "Differences Between Self and Other Across Difficulty Levels(Motion match task ACC)") +
-  papaja::theme_apa(base_size = 18, # base_family = "Times"
-                    )
-```
-
-###### RT
-
-```{r}
-# 调用函数进行不同条件的两两比较
-bfs_int_diff_mm_rt <- bf_pairwise_tests(df_motion_diff_match, "rt_diff_os_")
-
-# 提取BF值到数据框
-bfs_int_diff_mm_rt <- do.call(rbind, lapply(names(bfs_int_diff_mm_rt), function(iter){
-  do.call(rbind, lapply(names(bfs_int_diff_mm_rt[[iter]]), function(comparison){
-    data.frame(
-      subj_idx = iter,
-      Effect = comparison,
-      BFs = bfs_int_diff_mm_rt[[iter]][[comparison]]$BF,
-      Direction = bfs_int_diff_mm_rt[[iter]][[comparison]]$Direction
-    )
-  }))
-})) %>%
-  mutate(subj_idx = as.numeric(subj_idx))
-
-bfs_int_diff_mm_rt
-```
-
-**可视化**
-
-```{r}
-plot_bfs_1vs2 <-  
-  plot_ttest(bfs_int_diff_mm_rt, '1 vs 2', 'difficulty1 > difficulty2: motion match task(RT)')
-plot_bfs_1vs2
-
-plot_bfs_1vs3 <- 
-  plot_ttest(bfs_int_diff_mm_rt, '1 vs 3', 'difficulty1 > difficulty3: motion match task(RT)')
-plot_bfs_1vs3
-
-plot_bfs_1vs4 <-  
-  plot_ttest(bfs_int_diff_mm_rt, '1 vs 4', 'difficulty1 > difficulty4: motion match task(RT)')
-plot_bfs_1vs4
-
-plot_bfs_2vs3 <- 
-  plot_ttest(bfs_int_diff_mm_rt, '2 vs 3', 'difficulty2 > difficulty3: motion match task(RT)')
-plot_bfs_2vs3
-
-plot_bfs_2vs4 <-  
-  plot_ttest(bfs_int_diff_mm_rt, '2 vs 4', 'difficulty2 > difficulty4: motion match task(RT)')
-plot_bfs_2vs4
-
-plot_bfs_3vs4 <- 
-  plot_ttest(bfs_int_diff_mm_rt, '3 vs 4', 'difficulty3 > difficulty4: motion match task(RT)')
-plot_bfs_3vs4
-```
-
-**查看数据的变化趋势**
-
-```{r}
-ggplot(df_motion_diff_match_long, aes(x = difficulty, y = rt_diff, group = subj_idx)) +
-  geom_line(alpha = 0.5) +
-  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1) + labs(title = "Differences Between Self and Other Across Difficulty Levels(Motion match task RT)") +
-  papaja::theme_apa(base_size = 18,# base_family = "Times"
-                    )
-```
 
 #### 辨别任务
 
-##### 关联类型主效应
-
-###### ACC
+##### ACC
 
 ```{r}
 bfs_association_mr_acc <- bf_aov(df_motion_rdk, 'acc')
@@ -302,7 +167,7 @@ plot_bfs_int <- plot_aov(bfs_association_mr_acc, 'bfs_int', 'Interaction: motion
 plot_bfs_int
 ```
 
-###### RT
+##### RT
 
 ```{r}
 bfs_association_mr_rt <- bf_aov(df_motion_rdk, 'rt')
@@ -319,145 +184,12 @@ plot_bfs_int <- plot_aov(bfs_association_mr_rt, 'bfs_int', 'Interaction: motion 
 plot_bfs_int
 ```
 
-##### 关联类型和难度的交互效应
-
-###### ACC
-
-```{r}
-# 调用函数进行不同条件的两两比较
-bfs_int_diff_mr_acc <- bf_pairwise_tests(df_motion_diff_rdk, "acc_diff_so_")
-
-# 提取BF值到数据框
-bfs_int_diff_mr_acc <- do.call(rbind, lapply(names(bfs_int_diff_mr_acc), function(iter){
-  do.call(rbind, lapply(names(bfs_int_diff_mr_acc[[iter]]), function(comparison){
-    data.frame(
-      subj_idx = iter,
-      Effect = comparison,
-      BFs = bfs_int_diff_mr_acc[[iter]][[comparison]]$BF,
-      Direction = bfs_int_diff_mr_acc[[iter]][[comparison]]$Direction
-    )
-  }))
-})) %>%
-  mutate(subj_idx = as.numeric(subj_idx))
-
-bfs_int_diff_mr_acc
-```
-
-**可视化**
-
-```{r}
-plot_bfs_1vs2 <-  
-  plot_ttest(bfs_int_diff_mr_acc, '1 vs 2', 'difficulty1 > difficulty2: motion rdk task(ACC)')
-plot_bfs_1vs2
-
-plot_bfs_1vs3 <- 
-  plot_ttest(bfs_int_diff_mr_acc, '1 vs 3', 'difficulty1 > difficulty3: motion rdk task(ACC)')
-plot_bfs_1vs3
-
-plot_bfs_1vs4 <-  
-  plot_ttest(bfs_int_diff_mr_acc, '1 vs 4', 'difficulty1 > difficulty4: motion rdk task(ACC)')
-plot_bfs_1vs4
-
-plot_bfs_2vs3 <- 
-  plot_ttest(bfs_int_diff_mr_acc, '2 vs 3', 'difficulty2 > difficulty3: motion rdk task(ACC)')
-plot_bfs_2vs3
-
-plot_bfs_2vs4 <-  
-  plot_ttest(bfs_int_diff_mr_acc, '2 vs 4', 'difficulty2 > difficulty4: motion rdk task(ACC)')
-plot_bfs_2vs4
-
-plot_bfs_3vs4 <- 
-  plot_ttest(bfs_int_diff_mr_acc, '3 vs 4', 'difficulty3 > difficulty4: motion rdk task(ACC)')
-plot_bfs_3vs4
-```
-
-**查看数据的变化趋势**
-
-```{r}
-# 转为长数据
-df_motion_diff_rdk_long <- df_motion_diff_rdk %>% 
-  tidyr::pivot_longer(
-    cols = starts_with(c("acc_diff_so", "rt_diff_os")),
-    names_to = c(".value", "difficulty"),
-    names_pattern = "^(acc_diff|rt_diff)_[^_]+_(\\d+)$",  # 简化正则表达式
-    values_drop_na = TRUE
-  )
-
-ggplot(df_motion_diff_rdk_long, aes(x = difficulty, y = acc_diff, group = subj_idx)) +
-  geom_line(alpha = 0.5) +
-  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1) + labs(title = "Differences Between Self and Other Across Difficulty Levels(Motion rdk task ACC)") +
-  papaja::theme_apa(base_size = 18, # base_family = "Times"
-                    )
-```
-
-###### RT
-
-```{r}
-# 调用函数进行不同条件的两两比较
-bfs_int_diff_mr_rt <- bf_pairwise_tests(df_motion_diff_match, "rt_diff_os_")
-
-# 提取BF值到数据框
-bfs_int_diff_mr_rt <- do.call(rbind, lapply(names(bfs_int_diff_mr_rt), function(iter){
-  do.call(rbind, lapply(names(bfs_int_diff_mr_rt[[iter]]), function(comparison){
-    data.frame(
-      subj_idx = iter,
-      Effect = comparison,
-      BFs = bfs_int_diff_mr_rt[[iter]][[comparison]]$BF,
-      Direction = bfs_int_diff_mr_rt[[iter]][[comparison]]$Direction
-    )
-  }))
-})) %>%
-  mutate(subj_idx = as.numeric(subj_idx))
-
-bfs_int_diff_mr_rt
-```
-
-**可视化**
-
-```{r}
-plot_bfs_1vs2 <-  
-  plot_ttest(bfs_int_diff_mr_rt, '1 vs 2', 'difficulty1 > difficulty2: motion rdk task(RT)')
-plot_bfs_1vs2
-
-plot_bfs_1vs3 <- 
-  plot_ttest(bfs_int_diff_mr_rt, '1 vs 3', 'difficulty1 > difficulty3: motion rdk task(RT)')
-plot_bfs_1vs3
-
-plot_bfs_1vs4 <-  
-  plot_ttest(bfs_int_diff_mr_rt, '1 vs 4', 'difficulty1 > difficulty4: motion rdk task(RT)')
-plot_bfs_1vs4
-
-plot_bfs_2vs3 <- 
-  plot_ttest(bfs_int_diff_mr_rt, '2 vs 3', 'difficulty2 > difficulty3: motion rdk task(RT)')
-plot_bfs_2vs3
-
-plot_bfs_2vs4 <-  
-  plot_ttest(bfs_int_diff_mr_rt, '2 vs 4', 'difficulty2 > difficulty4: motion rdk task(RT)')
-plot_bfs_2vs4
-
-plot_bfs_3vs4 <- 
-  plot_ttest(bfs_int_diff_mr_rt, '3 vs 4', 'difficulty3 > difficulty4: motion rdk task(RT)')
-plot_bfs_3vs4
-```
-
-**查看数据的变化趋势**
-
-```{r}
-ggplot(df_motion_diff_rdk_long, aes(x = difficulty, y = rt_diff, group = subj_idx)) +
-  geom_line(alpha = 0.5) +
-  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1) + labs(title = "Differences Between Self and Other Across Difficulty Levels(Motion rdk task RT)") +
-  papaja::theme_apa(base_size = 18,# base_family = "Times"
-                    )
-```
-
 
 ### 颜色组
 
 #### 匹配任务
 
-##### 关联类型主效应
-
-###### ACC
+##### ACC
 
 ```{r}
 bfs_association_cm_acc <- bf_aov(df_color_match, 'acc', 'association')
@@ -476,8 +208,6 @@ plot_bfs_int
 
 ###### RT
 
-####### 匹配试次
-
 ```{r}
 bfs_association_cm_rt <- bf_aov(df_color_match, 'rt', 'association')
 bfs_association_cm_rt
@@ -493,146 +223,10 @@ plot_bfs_int <- plot_aov(bfs_association_cm_rt, 'bfs_int', 'Interaction: color m
 plot_bfs_int
 ```
 
-##### 关联类型和难度的交互效应
-
-###### ACC
-
-```{r}
-# 调用函数进行不同条件的两两比较
-bfs_int_diff_cm_acc <- bf_pairwise_tests(df_color_diff_match, "acc_diff_so_")
-
-# 提取BF值到数据框
-bfs_int_diff_cm_acc <- do.call(rbind, lapply(names(bfs_int_diff_cm_acc), function(iter){
-  do.call(rbind, lapply(names(bfs_int_diff_cm_acc[[iter]]), function(comparison){
-    data.frame(
-      subj_idx = iter,
-      Effect = comparison,
-      BFs = bfs_int_diff_cm_acc[[iter]][[comparison]]$BF,
-      Direction = bfs_int_diff_cm_acc[[iter]][[comparison]]$Direction
-    )
-  }))
-})) %>%
-  mutate(subj_idx = as.numeric(subj_idx))
-
-bfs_int_diff_cm_acc
-```
-
-**可视化**
-
-```{r}
-plot_bfs_1vs2 <-  
-  plot_ttest(bfs_int_diff_cm_acc, '1 vs 2', 'difficulty1 > difficulty2: color match task(ACC)')
-plot_bfs_1vs2
-
-plot_bfs_1vs3 <- 
-  plot_ttest(bfs_int_diff_cm_acc, '1 vs 3', 'difficulty1 > difficulty3: color match task(ACC)')
-plot_bfs_1vs3
-
-plot_bfs_1vs4 <-  
-  plot_ttest(bfs_int_diff_cm_acc, '1 vs 4', 'difficulty1 > difficulty4: color match task(ACC)')
-plot_bfs_1vs4
-
-plot_bfs_2vs3 <- 
-  plot_ttest(bfs_int_diff_cm_acc, '2 vs 3', 'difficulty2 > difficulty3: color match task(ACC)')
-plot_bfs_2vs3
-
-plot_bfs_2vs4 <-  
-  plot_ttest(bfs_int_diff_cm_acc, '2 vs 4', 'difficulty2 > difficulty4: color match task(ACC)')
-plot_bfs_2vs4
-
-plot_bfs_3vs4 <- 
-  plot_ttest(bfs_int_diff_cm_acc, '3 vs 4', 'difficulty3 > difficulty4: color match task(ACC)')
-plot_bfs_3vs4
-```
-
-**查看数据的变化趋势**
-
-```{r}
-# 转为长数据
-df_color_diff_match_long <- df_color_diff_match %>% 
-  tidyr::pivot_longer(
-    cols = starts_with(c("acc_diff_so", "rt_diff_os")),
-    names_to = c(".value", "difficulty"),
-    names_pattern = "^(acc_diff|rt_diff)_[^_]+_(\\d+)$",  # 简化正则表达式
-    values_drop_na = TRUE
-  )
-
-ggplot(df_color_diff_match_long, aes(x = difficulty, y = acc_diff, group = subj_idx)) +
-  geom_line(alpha = 0.5) +
-  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1) + labs(title = "Differences Between Self and Other Across Difficulty Levels(Color match task ACC)") +
-  papaja::theme_apa(base_size = 18, # base_family = "Times"
-                    )
-```
-
-###### RT
-
-####### 匹配试次
-
-```{r}
-# 调用函数进行不同条件的两两比较
-bfs_int_diff_cm_rt <- bf_pairwise_tests(df_color_diff_match, "rt_diff_os_")
-
-# 提取BF值到数据框
-bfs_int_diff_cm_rt <- do.call(rbind, lapply(names(bfs_int_diff_cm_rt), function(iter){
-  do.call(rbind, lapply(names(bfs_int_diff_cm_rt[[iter]]), function(comparison){
-    data.frame(
-      subj_idx = iter,
-      Effect = comparison,
-      BFs = bfs_int_diff_cm_rt[[iter]][[comparison]]$BF,
-      Direction = bfs_int_diff_cm_rt[[iter]][[comparison]]$Direction
-    )
-  }))
-})) %>%
-  mutate(subj_idx = as.numeric(subj_idx))
-
-bfs_int_diff_cm_rt
-```
-
-**可视化**
-
-```{r}
-plot_bfs_1vs2 <-  
-  plot_ttest(bfs_int_diff_cm_rt, '1 vs 2', 'difficulty1 > difficulty2: color match trial(RT)')
-plot_bfs_1vs2
-
-plot_bfs_1vs3 <- 
-  plot_ttest(bfs_int_diff_cm_rt, '1 vs 3', 'difficulty1 > difficulty3: color match trial(RT)')
-plot_bfs_1vs3
-
-plot_bfs_1vs4 <-  
-  plot_ttest(bfs_int_diff_cm_rt, '1 vs 4', 'difficulty1 > difficulty4: color match trial(RT)')
-plot_bfs_1vs4
-
-plot_bfs_2vs3 <- 
-  plot_ttest(bfs_int_diff_cm_rt, '2 vs 3', 'difficulty2 > difficulty3: color match trial(RT)')
-plot_bfs_2vs3
-
-plot_bfs_2vs4 <-  
-  plot_ttest(bfs_int_diff_cm_rt, '2 vs 4', 'difficulty2 > difficulty4: color match trial(RT)')
-plot_bfs_2vs4
-
-plot_bfs_3vs4 <- 
-  plot_ttest(bfs_int_diff_cm_rt, '3 vs 4', 'difficulty3 > difficulty4: color match trial(RT)')
-plot_bfs_3vs4
-```
-
-
-
-**查看数据的变化趋势**
-
-```{r}
-ggplot(df_color_diff_match_long, aes(x = difficulty, y = rt_diff, group = subj_idx)) +
-  geom_line(alpha = 0.5) +
-  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1) + labs(title = "Differences Between Self and Other Across Difficulty Levels(Color match task RT)") +
-  papaja::theme_apa(base_size = 18,# base_family = "Times"
-                    )
-```
 
 #### 辨别任务
 
-##### 关联类型主效应
-
-###### ACC
+##### ACC
 
 ```{r}
 bfs_association_cr_acc <- bf_aov(df_color_rdk, 'acc', 'association')
@@ -664,137 +258,6 @@ plot_bfs_association
 
 plot_bfs_int <- plot_aov(bfs_association_cr_rt, 'bfs_int', 'Interaction: color rdk task(RT)')
 plot_bfs_int
-```
-
-##### 关联类型和难度的交互效应
-
-###### ACC
-
-```{r}
-# 调用函数进行不同条件的两两比较
-bfs_int_diff_cr_acc <-bf_pairwise_tests(df_color_diff_rdk, "acc_diff_so_")
-
-# 提取BF值到数据框
-bfs_int_diff_cr_acc <- do.call(rbind, lapply(names(bfs_int_diff_cr_acc), function(iter){
-  do.call(rbind, lapply(names(bfs_int_diff_cr_acc[[iter]]), function(comparison){
-    data.frame(
-      subj_idx = iter,
-      Effect = comparison,
-      BFs = bfs_int_diff_cr_acc[[iter]][[comparison]]$BF,
-      Direction = bfs_int_diff_cr_acc[[iter]][[comparison]]$Direction
-    )
-  }))
-})) %>%
-  mutate(subj_idx = as.numeric(subj_idx))
-
-bfs_int_diff_cr_acc
-```
-
-**可视化**
-
-```{r}
-plot_bfs_1vs2 <-  
-  plot_ttest(bfs_int_diff_cr_acc, '1 vs 2', 'difficulty1 > difficulty2: color rdk task(ACC)')
-plot_bfs_1vs2
-
-plot_bfs_1vs3 <- 
-  plot_ttest(bfs_int_diff_cr_acc, '1 vs 3', 'difficulty1 > difficulty3: color rdk task(ACC)')
-plot_bfs_1vs3
-
-plot_bfs_1vs4 <-  
-  plot_ttest(bfs_int_diff_cr_acc, '1 vs 4', 'difficulty1 > difficulty4: color rdk task(ACC)')
-plot_bfs_1vs4
-
-plot_bfs_2vs3 <- 
-  plot_ttest(bfs_int_diff_cr_acc, '2 vs 3', 'difficulty2 > difficulty3: color rdk task(ACC)')
-plot_bfs_2vs3
-
-plot_bfs_2vs4 <-  
-  plot_ttest(bfs_int_diff_cr_acc, '2 vs 4', 'difficulty2 > difficulty4: color rdk task(ACC)')
-plot_bfs_2vs4
-
-plot_bfs_3vs4 <- 
-  plot_ttest(bfs_int_diff_cr_acc, '3 vs 4', 'difficulty3 > difficulty4: color rdk task(ACC)')
-plot_bfs_3vs4
-```
-
-**查看数据的变化趋势**
-
-```{r}
-# 转为长数据
-df_color_diff_rdk_long <- df_color_diff_rdk %>% 
-  tidyr::pivot_longer(
-    cols = starts_with(c("acc_diff_so", "rt_diff_os")),
-    names_to = c(".value", "difficulty"),
-    names_pattern = "^(acc_diff|rt_diff)_[^_]+_(\\d+)$",  # 简化正则表达式
-    values_drop_na = TRUE
-  )
-
-ggplot(df_color_diff_rdk_long, aes(x = difficulty, y = acc_diff, group = subj_idx)) +
-  geom_line(alpha = 0.5) +
-  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1) + labs(title = "Differences Between Self and Other Across Difficulty Levels(Color rdk task ACC)") +
-  papaja::theme_apa(base_size = 18, # base_family = "Times"
-                    )
-```
-
-###### RT
-
-```{r}
-# 调用函数进行不同条件的两两比较
-bfs_int_diff_cr_rt <- bf_pairwise_tests(df_color_diff_rdk, "rt_diff_os_")
-
-# 提取BF值到数据框
-bfs_int_diff_cr_rt <- do.call(rbind, lapply(names(bfs_int_diff_cr_rt), function(iter){
-  do.call(rbind, lapply(names(bfs_int_diff_cr_rt[[iter]]), function(comparison){
-    data.frame(
-      subj_idx = iter,
-      Effect = comparison,
-      BFs = bfs_int_diff_cr_rt[[iter]][[comparison]]$BF,
-      Direction = bfs_int_diff_cr_rt[[iter]][[comparison]]$Direction
-    )
-  }))
-})) %>%
-  mutate(subj_idx = as.numeric(subj_idx))
-
-bfs_int_diff_cr_rt
-```
-
-**可视化**
-
-```{r}
-plot_bfs_1vs2 <-  
-  plot_ttest(bfs_int_diff_cr_rt, '1 vs 2', 'difficulty1 > difficulty2: color rdk task(RT)')
-plot_bfs_1vs2
-
-plot_bfs_1vs3 <- 
-  plot_ttest(bfs_int_diff_cr_rt, '1 vs 3', 'difficulty1 > difficulty3: color rdk task(RT)')
-plot_bfs_1vs3
-
-plot_bfs_1vs4 <-  
-  plot_ttest(bfs_int_diff_cr_rt, '1 vs 4', 'difficulty1 > difficulty4: color rdk task(RT)')
-plot_bfs_1vs4
-
-plot_bfs_2vs3 <- 
-  plot_ttest(bfs_int_diff_cr_rt, '2 vs 3', 'difficulty2 > difficulty3: color rdk task(RT)')
-plot_bfs_2vs3
-
-plot_bfs_2vs4 <-  
-  plot_ttest(bfs_int_diff_cr_rt, '2 vs 4', 'difficulty2 > difficulty4: color rdk task(RT)')
-plot_bfs_2vs4
-
-plot_bfs_3vs4 <- 
-  plot_ttest(bfs_int_diff_cr_rt, '3 vs 4', 'difficulty3 > difficulty4: color rdk task(RT)')
-plot_bfs_3vs4
-```
-
-**查看数据的变化趋势**
-
-```{r}
-ggplot(df_color_diff_rdk_long, aes(x = difficulty, y = rt_diff, group = subj_idx)) +
-  geom_line(alpha = 0.5) +
-  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1) + labs(title = "Differences Between Self and Other Across Difficulty Levels(Color rdk task RT)") +
-  papaja::theme_apa(base_size = 18,# base_family = "Times"
-                    )
 ```
 
 

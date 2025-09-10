@@ -37,7 +37,7 @@ bf_aov <- function(data, dv='acc', v='association') {
       iteration = 10000
     )
     
-    # 仅包含 v 主效应
+    # 仅包含 association 主效应
     model_association <- BayesFactor::lmBF(
       update(dv_formula, paste(". ~ . +", v)),
       data = data,

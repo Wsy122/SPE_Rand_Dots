@@ -100,6 +100,7 @@ data_motion_rdk <- data_motion %>%
 
 ```{r bayes glm color-acc}
 # match task
+# 检验假设1
 m0_color_match_acc =  brm(
   correct ~ association + difficulty + (1|subj_idx),
   data = data_color_match,
@@ -108,7 +109,7 @@ m0_color_match_acc =  brm(
   chains = 4, iter = 4000, warmup = 1000
 )
 
-## SPE
+# 检验假设2
 m1_color_match_spe =  brm(
   acc_diff_so ~ difficulty + (1|subj_idx),
   data = df_color_match,
@@ -118,7 +119,7 @@ m1_color_match_spe =  brm(
 
 # rdk task
 m2_color_rdk_acc =  brm(
-  correct ~ association * difficulty + (1|subj_idx),
+  correct ~ association + difficulty + (1|subj_idx),
   data = data_color_rdk,
   family = "bernoulli",
   control = list(adapt_delta = 0.95),
@@ -145,7 +146,7 @@ summary(m3_color_rdk_spe)
 ```{r plot color match}
 ggplot(df_color_rdk, aes(x = difficulty, y = acc_diff_so, group = subj_idx)) +
   geom_line(alpha = 0.5) +
-  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1) + labs(title = "SPE Across Difficulty Levels(Color rdk task ACC)") +
+  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1) + labs(title = "SPE Across Difficulty Levels(Color rdk task ACC)", y="SPE") +
   papaja::theme_apa(base_size = 18, # base_family = "Times"
                     )
 ```
@@ -155,14 +156,13 @@ ggplot(df_color_rdk, aes(x = difficulty, y = acc_diff_so, group = subj_idx)) +
 ```{r bayes glm color-rt}
 # match task
 m0_color_match_rt =  brm(
-  rt    ~ association * difficulty + (1|subj_idx),
+  rt    ~ association + difficulty + (1|subj_idx),
   data = data_color_match,
   family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
   control = list(adapt_delta = 0.95),
   chains = 4, iter = 4000, warmup = 1000
 )
 
-## SPE
 m1_color_match_speRT =  brm(
   rt_diff_os ~ difficulty + (1|subj_idx),
   data = df_color_match,
@@ -172,14 +172,13 @@ m1_color_match_speRT =  brm(
 
 # RDK task
 m2_color_rdk_rt =  brm(
-  rt    ~ association * difficulty + (1|subj_idx),
+  rt    ~ association + difficulty + (1|subj_idx),
   data = data_color_rdk,
   family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
   control = list(adapt_delta = 0.95),
   chains = 4, iter = 4000, warmup = 1000
 )
 
-# SPE
 m3_color_rdk_speRT =  brm(
   rt_diff_os ~ difficulty + (1|subj_idx),
   data = df_color_rdk,
@@ -203,7 +202,7 @@ summary(m3_color_rdk_speRT)
 
 ```{r bayes glm motion-acc}
 m0_motion_match_acc =  brm(
- correct ~ association * difficulty + (1|subj_idx),
+ correct ~ association + difficulty + (1|subj_idx),
   data = data_motion_match,
   family = "bernoulli",
   control = list(adapt_delta = 0.95),
@@ -219,7 +218,7 @@ m1_motion_match_spe =  brm(
 )
 
 m2_motion_rdk_acc =  brm(
-  correct ~ association * difficulty + (1|subj_idx),
+  correct ~ association + difficulty + (1|subj_idx),
   data = data_motion_rdk,
   family = "bernoulli",
   control = list(adapt_delta = 0.95),
@@ -245,7 +244,7 @@ summary(m3_motion_rdk_spe)
 ```{r plot motion match}
 ggplot(df_motion_rdk, aes(x = difficulty, y = acc_diff_so, group = subj_idx)) +
   geom_line(alpha = 0.5) +
-  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1) + labs(title = "SPE Across Difficulty Levels(Motion rdk task ACC)") +
+  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1) + labs(title = "SPE Across Difficulty Levels(Motion rdk task ACC)", y = "SPE") +
   papaja::theme_apa(base_size = 18, # base_family = "Times"
                     )
 ```
@@ -255,14 +254,13 @@ ggplot(df_motion_rdk, aes(x = difficulty, y = acc_diff_so, group = subj_idx)) +
 ```{r bayes glm motion-rt}
 # match task
 m0_motion_match_rt =  brm(
-  rt ~ association * difficulty + (1|subj_idx),
+  rt ~ association + difficulty + (1|subj_idx),
   data = data_motion_match,
   family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
   control = list(adapt_delta = 0.95),
   chains = 4, iter = 4000, warmup = 1000
 )
 
-## SPE
 m1_motion_match_speRT =  brm(
   rt_diff_os ~ difficulty + (1|subj_idx),
   data = df_motion_match,
@@ -272,14 +270,13 @@ m1_motion_match_speRT =  brm(
 
 # rdk task
 m2_motion_rdk_rt =  brm(
-  rt ~ association * difficulty + (1|subj_idx),
+  rt ~ association + difficulty + (1|subj_idx),
   data = data_motion_rdk,
   family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
   control = list(adapt_delta = 0.95),
   chains = 4, iter = 4000, warmup = 1000
 )
 
-## SPE
 m3_motion_rdk_speRT =  brm(
   rt_diff_os ~ difficulty + (1|subj_idx),
   data = df_motion_rdk,
