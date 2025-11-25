@@ -19,12 +19,12 @@ library(tidyverse)
 ```{r}
 # 文件路径和文件名根据实际情况调整
 # 设置目标文件夹相对路径
-folder_path <- "../Data/exp1a/RawData/"
+folder_path <- "../3_Data/exp1a/RawData/color"
 
 # 列出目标文件
 file_list <- list.files(
   path = folder_path,
-  pattern = "*exp_1a_.*\\.csv$", full.names = TRUE
+  pattern = "*exp1a_subj.*\\.csv$", full.names = TRUE
 ) # 这里根据实际命名进行修改
 
 # 创建一个空列表来存储数据
@@ -42,7 +42,7 @@ for (file in file_list) {
 
 ```{r}
 # 创建输出文件夹（如果不存在）
-output_path <- "../Data/exp1a/CleanData"
+output_path <- "../3_Data/exp1a/CleanData"
 if (!dir.exists(output_path)) {
   dir.create(output_path, recursive = TRUE)
 }
@@ -69,7 +69,9 @@ for (file_name in names(df_list_1)) {
   # 先按照下划线分割字符串
   split_data <- strsplit(participant_data$subj_idx, "_")
   # 提取分割后的第3个元素（数字部分在第3个位置，可根据实际调整）并转换为数值
-  participant_data$subj_idx <- as.numeric(lapply(split_data, function(x) substr(x[[3]], 1, 2)))
+  participant_data$subj_idx <- as.numeric(lapply(split_data, function(x) {
+    gsub("[^0-9]", "", x[[3]])  # 提取纯数字部分
+  }))
 
   for (info in info_list) {
     key_value <- strsplit(info, ":")[[1]]
@@ -85,7 +87,7 @@ for (file_name in names(df_list_1)) {
   behavior_data <- data[
     data$part %in% c("motion_test","match_RDK","RDK"),
     c(
-      "part", "rt", "response", "correct", "coherent_direction","coherence",
+      "part", "rt", "response", "correct", "coherent_direction","coherence", 
       "isMatch", "association", "difficulty", "dot_color_final","target_color_proportion"
     )
   ]
@@ -118,12 +120,12 @@ for (file_name in names(df_list_1)) {
 
 ```{r message=FALSE}
 # 设置目标文件夹相对路径
-folder_path <- "../Data/exp1a/CleanData"
+folder_path <- "../3_Data/exp1a/CleanData"
 
 # 列出所有含有"pilot_expt_"的csv文件
 file_list <- list.files(
   path = folder_path,
-  pattern = "*exp_1a_.*\\.csv$", full.names = TRUE
+  pattern = "*exp1a_subj_.*\\.csv$", full.names = TRUE
 )
 
 # 创建一个空列表来存储数据
@@ -148,17 +150,18 @@ data <- do.call(rbind, df_list_1)
 
 ```{r}
 # 计算平均正确率和反应时
-copmute_rt_acc <- function(data){
+compute_rt_acc <- function(data){
   data <- data %>%
-  dplyr::filter(part %in% c("match_RDK","RDK")) %>%
-    dplyr::group_by(subj_idx, part, difficulty, association, isMatch) %>% # 按被试与难度和关联类型分组
+    dplyr::filter(part %in% c("match_RDK","RDK")) %>%
+    dplyr::filter(rt != -1) %>%
+    dplyr::group_by(subj_idx, part, difficulty, association) %>%
     dplyr::summarise(
-      rt = mean(rt, na.rm = TRUE),# 每个被试所有trial的平均反应时
-      acc = sum(correct == 'true' & rt >= 200 & rt <= 3000, na.rm = TRUE) / n(), #计算每个被试在每个条件的正确率= 正确/总数
+      # rt = mean(rt, na.rm = TRUE),  # 所有有效 trials 的平均反应时
+      rt = mean(rt[correct == 1 & rt >= 200 & rt <= 3000], na.rm = TRUE),  # 仅正确 trials 的平均反应时
+      acc = sum(correct == 1 & rt >= 200 & rt <= 3000, na.rm = TRUE) / n(),  # 正确率
       .groups = "drop")
-   
-    # 返回处理后的数据
-    return(data)
+  
+  return(data)
 }
 
 # 计算自我-他人差异，即SPE
@@ -197,30 +200,45 @@ compute_diff <- function(data, keepMatch=FALSE){
 
 ```{r}
 data <- data %>%
-  #筛出反应时在200~3000)
-  dplyr::filter(rt >= 200 & rt <= 3000)
+  #对反应时进行筛选
+  dplyr::filter(rt >= 200 & rt <= 3000, !is.na(rt))
 
 # Motion
 data1 <- data %>%
   dplyr::filter(
-    subj_idx %in% c( seq(1, 10))) # 被试编号 1-20 为运动组
+    subj_idx %in% c( seq(1, 70))) %>%  # 被试编号 1-70 为运动组
+  # 先将correct转换为数值型（TRUE=1, FALSE=0）
+  dplyr::mutate(correct = as.numeric(as.logical(correct))) %>%
+  # 计算每个被试的正确率
+  dplyr::group_by(subj_idx, part, difficulty) %>%
+  dplyr::mutate(subj_acc = mean(correct, na.rm = TRUE)) %>%
+  dplyr::ungroup()
 
-data_motion <- data1[
-  c(
-    "subj_idx", "rt", "correct", "coherence", "part",
-    "isMatch", "association", "difficulty", "target_color_proportion"
-  )
-]
+# data_motion <- data1 %>%
+#   dplyr::select(
+#     subj_idx, rt, correct, coherence, part, response, coherent_direction,
+#     isMatch, association, difficulty
+#   ) %>%
+#   dplyr::mutate(rt = rt / 1000) # 把rt转换为以秒为单位
+
+data_motion <- data1 %>%
+  dplyr::select(
+    subj_idx, rt, correct, coherence, part, response, coherent_direction,
+    isMatch, association, difficulty
+  ) %>%
+  # 先将correct转换为数值型（TRUE=1, FALSE=0）
+  dplyr::mutate(correct = as.numeric(as.logical(correct))) %>%
+  dplyr::mutate(rt = rt / 1000) # 把rt转换为以秒为单位
 
 # 输出到新的CSV文件
 output_file <- base::file.path(output_path, "data_motion.csv")
 utils::write.csv(data_motion, output_file, row.names = FALSE)
 
+
               
-data_motion_rt_acc <- copmute_rt_acc(data1) %>%
-  dplyr::mutate(group = "motion") # %>%
-  # tidyr::pivot_wider(names_from = c(part, difficulty, association), 
-              #values_from = c(rt, acc))
+data_motion_rt_acc <- compute_rt_acc(data1) %>%
+  dplyr::mutate(group = "motion") 
+
 
 data_motion_diff <- compute_diff(data_motion_rt_acc) %>%
   #类型为character的转换为因子类型，便于后续分析
@@ -230,20 +248,27 @@ data_motion_diff <- compute_diff(data_motion_rt_acc) %>%
 # Color
 data2 <- data %>%
   dplyr::filter(
-    subj_idx %in% c( seq(11, 40))) # 后20为颜色
+    subj_idx %in% c( seq(70, 140))) %>% # 后70为颜色
+  # 先将correct转换为数值型（TRUE=1, FALSE=0）
+  dplyr::mutate(correct = as.numeric(as.logical(correct))) %>%
+  # 计算每个被试的正确率
+  dplyr::group_by(subj_idx, part, difficulty) %>%
+  dplyr::mutate(subj_acc = mean(correct, na.rm = TRUE)) %>%
+  dplyr::ungroup()
 
-data_color <- data2[
-  c(
-    "subj_idx", "rt", "correct", "coherence", "part",
-    "isMatch", "association", "difficulty", "target_color_proportion"
-  )
-]
+data_color <- data2 %>%
+  dplyr::select(
+    subj_idx, rt, correct, coherence, part, response, dot_color_final,
+    isMatch, association, difficulty
+  ) %>%
+  dplyr::mutate(correct = as.numeric(as.logical(correct))) %>%
+  dplyr::mutate(rt = rt / 1000)
 
 # 输出到新的CSV文件
 output_file <- base::file.path(output_path, "data_color.csv")
 utils::write.csv(data_color, output_file, row.names = FALSE)
 
-data_color_rt_acc <- copmute_rt_acc(data2) %>%
+data_color_rt_acc <- compute_rt_acc(data2) %>%
   dplyr::mutate(group = "color")
 
 data_color_diff <- compute_diff(data_color_rt_acc) %>%
@@ -251,7 +276,7 @@ data_color_diff <- compute_diff(data_color_rt_acc) %>%
   dplyr::mutate(subj_idx = as.factor(subj_idx),
          difficulty = as.factor(difficulty))
 
-data_color_diff_keepMatch <- compute_diff(data_color_rt_acc, TRUE) %>%
+data_color_diff <- compute_diff(data_color_rt_acc) %>%
   #类型为character的转换为因子类型，便于后续分析
   dplyr::mutate(subj_idx = as.factor(subj_idx),
          difficulty = as.factor(difficulty))
@@ -265,7 +290,7 @@ data_color_diff_keepMatch <- compute_diff(data_color_rt_acc, TRUE) %>%
 df_motion_match <- data_motion_rt_acc %>% 
   dplyr::filter(# difficulty %in% c(1, 4), 
     part %in% c('match_RDK')) %>%
-  dplyr::select(subj_idx, acc, rt, association, difficulty, isMatch, group) %>%
+  dplyr::select(subj_idx, acc, rt, association, difficulty, group) %>%
   #类型为character的转换为因子类型，便于后续分析
   dplyr::mutate(subj_idx = as.factor(subj_idx),
          association = as.factor(association),
@@ -288,10 +313,23 @@ df_motion_diff_match <- data_motion_diff %>%
     # values_from = c(acc_diff_so, rt_diff_os),  # 同时处理acc和rt列
     # names_glue = "{.value}_{difficulty}" ) 
 
+data_motion_match_jasp <- df_motion_match %>%
+  # dplyr::select(subj_idx, acc, rt, association, difficulty, group) %>%
+  # 组合 part、difficulty、association 为新列名（用下划线连接）
+  mutate(new_col = paste(difficulty, association, sep = "_")) %>%
+  # 转换为宽表：行由 subj_idx、isMatch、group 定义，列由 new_col 定义，数值为 rt 和 acc
+  pivot_wider(
+    id_cols = c(subj_idx, group),  # 保持这些列为行标识
+    names_from = new_col,                  # 用 new_col 的值作为新列名
+    values_from = c(rt, acc),              # 分别将 rt 和 acc 转换为宽表数值
+    # names_sep = "_"                        # 列名中用下划线分隔（可选，增强可读性）
+  )
 
 # 输出到新的CSV文件
 output_file <- base::file.path(output_path, "df_motion_diff_match.csv")
 utils::write.csv(df_motion_diff_match, output_file, row.names = FALSE)
+output_file <- base::file.path(output_path, "data_motion_match_jasp.csv")
+utils::write.csv(data_motion_match_jasp, output_file, row.names = FALSE)
 ```
 
 ### 运动组-辨别任务
@@ -322,10 +360,23 @@ df_motion_diff_rdk <- data_motion_diff %>%
     # values_from = c(acc_diff_so, rt_diff_os),  # 同时处理acc和rt列
     # names_glue = "{.value}_{difficulty}" ) 
 
+data_motion_rdk_jasp <- df_motion_rdk %>%
+  # 组合 part、difficulty、association 为新列名（用下划线连接）
+  mutate(new_col = paste(difficulty, association, sep = "_")) %>%
+  # 转换为宽表：行由 subj_idx、isMatch、group 定义，列由 new_col 定义，数值为 rt 和 acc
+  pivot_wider(
+    id_cols = c(subj_idx, group),  # 保持这些列为行标识
+    names_from = new_col,                  # 用 new_col 的值作为新列名
+    values_from = c(rt, acc),              # 分别将 rt 和 acc 转换为宽表数值
+    # names_sep = "_"                        # 列名中用下划线分隔（可选，增强可读性）
+  )
+
 
 # 输出到新的CSV文件
 output_file <- base::file.path(output_path, "df_motion_diff_rdk.csv")
 utils::write.csv(df_motion_diff_rdk, output_file, row.names = FALSE)
+output_file <- base::file.path(output_path, "data_motion_rdk_jasp.csv")
+utils::write.csv(data_motion_rdk_jasp, output_file, row.names = FALSE)
 ```
 
 ### 颜色组-匹配任务
@@ -334,29 +385,12 @@ utils::write.csv(df_motion_diff_rdk, output_file, row.names = FALSE)
 df_color_match <- data_color_rt_acc %>% 
   dplyr::filter(# difficulty %in% c(1, 4), 
     part %in% c('match_RDK')) %>%
-  dplyr::select(subj_idx, acc, rt, association, difficulty, isMatch, group) %>%
+  dplyr::select(subj_idx, acc, rt, association, difficulty, group) %>%
   #类型为character的转换为因子类型，便于后续分析
   dplyr::mutate(subj_idx = as.factor(subj_idx),
          association = as.factor(association),
          difficulty = as.factor(difficulty))
 
-df_color_match_matchTrial <- data_color_rt_acc %>% 
-  dplyr::filter(isMatch %in% c('match'), 
-    part %in% c('match_RDK')) %>%
-  dplyr::select(subj_idx, acc, rt, association, difficulty, isMatch, group) %>%
-  #类型为character的转换为因子类型，便于后续分析
-  dplyr::mutate(subj_idx = as.factor(subj_idx),
-         association = as.factor(association),
-         difficulty = as.factor(difficulty))
-
-df_color_match_nonmatchTrial <- data_color_rt_acc %>% 
-  dplyr::filter(isMatch %in% c('mismatch'), 
-    part %in% c('match_RDK')) %>%
-  dplyr::select(subj_idx, acc, rt, association, difficulty, isMatch, group) %>%
-  #类型为character的转换为因子类型，便于后续分析
-  dplyr::mutate(subj_idx = as.factor(subj_idx),
-         association = as.factor(association),
-         difficulty = as.factor(difficulty))
 
 # 输出到新的CSV文件
 output_file <- base::file.path(output_path, "df_color_match.csv")

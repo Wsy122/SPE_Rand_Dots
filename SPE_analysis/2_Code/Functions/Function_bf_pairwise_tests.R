@@ -1,6 +1,6 @@
 # 定义函数，用来对交互效应进行进一步检验
 # 计算 bf 值，用贝叶斯配对样本t检验进一步检验交互作用
-bf_pairwise_tests <- function(data, prefix = "acc_diff_so_") {
+bf_pairwise_tests <- function(data, prefix = "acc_diff_so") {
   
   set.seed(1234)
   pairs <- utils::combn(1:4, 2, simplify = FALSE)

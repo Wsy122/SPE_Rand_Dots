@@ -144,7 +144,7 @@ summary(m3_color_rdk_spe)
 
 
 ```{r plot color match}
-ggplot(df_color_rdk, aes(x = difficulty, y = acc_diff_so, group = subj_idx)) +
+ggplot(df_color_match, aes(x = difficulty, y = rt_diff_os, group = subj_idx)) +
   geom_line(alpha = 0.5) +
   stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1) + labs(title = "SPE Across Difficulty Levels(Color rdk task ACC)", y="SPE") +
   papaja::theme_apa(base_size = 18, # base_family = "Times"
@@ -201,29 +201,32 @@ summary(m3_color_rdk_speRT)
 #### Correct
 
 ```{r bayes glm motion-acc}
+
 m0_motion_match_acc =  brm(
  correct ~ association + difficulty + (1|subj_idx),
   data = data_motion_match,
   family = "bernoulli",
+  prior = prior,
   control = list(adapt_delta = 0.95),
   chains = 4, iter = 4000, warmup = 1000
 )
 
-# SPE
-m1_motion_match_spe =  brm(
-  acc_diff_so ~ difficulty + (1|subj_idx),
-  data = df_motion_match,
-  control = list(adapt_delta = 0.95),
-  chains = 4, iter = 4000, warmup = 1000
-)
-
-m2_motion_rdk_acc =  brm(
+m1_motion_rdk_acc =  brm(
   correct ~ association + difficulty + (1|subj_idx),
   data = data_motion_rdk,
   family = "bernoulli",
   control = list(adapt_delta = 0.95),
   chains = 4, iter = 4000, warmup = 1000
 )
+
+# SPE
+m2_motion_match_spe =  brm(
+  acc_diff_so ~ difficulty + (1|subj_idx),
+  data = df_motion_match,
+  control = list(adapt_delta = 0.95),
+  chains = 4, iter = 4000, warmup = 1000
+)
+
 
 m3_motion_rdk_spe =  brm(
   acc_diff_so ~ difficulty + (1|subj_idx),
@@ -242,7 +245,7 @@ summary(m3_motion_rdk_spe)
 
 
 ```{r plot motion match}
-ggplot(df_motion_rdk, aes(x = difficulty, y = acc_diff_so, group = subj_idx)) +
+ggplot(df_motion_match, aes(x = difficulty, y = rt_diff_os, group = subj_idx)) +
   geom_line(alpha = 0.5) +
   stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1) + labs(title = "SPE Across Difficulty Levels(Motion rdk task ACC)", y = "SPE") +
   papaja::theme_apa(base_size = 18, # base_family = "Times"
@@ -287,8 +290,8 @@ m3_motion_rdk_speRT =  brm(
 
 ```{r summary motion-rt}
 summary(m0_motion_match_rt)
-summary(m1_motion_rdk_rt)
-summary(m2_motion_match_speRT)
+summary(m1_motion_match_speRT)
+summary(m2_motion_rdk_rt)
 summary(m3_motion_rdk_speRT)
 ```
 

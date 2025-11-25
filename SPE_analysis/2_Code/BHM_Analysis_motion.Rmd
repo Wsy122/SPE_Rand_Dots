@@ -1,0 +1,866 @@
+---
+title: "TmpBHM"
+author: "wusiyu"
+date: "2025-10-30"
+output: html_document
+---
+
+# 环境与R包配置,‘
+```{r}
+# 配置环境
+rm(list = ls())   # 清除当前工作环境中所有对象（变量、函数等）
+
+if (.Platform$OS.type == 'windows') {
+        Sys.setlocale(category = 'LC_ALL','en_US.UTF-8')   # 使用UTF-8编码
+} 
+
+# 安装cmdstanr作为后端
+if (!require(cmdstanr)){
+        install.packages("cmdstanr", repos = c('https://stan-dev.r-universe.dev', getOption("repos")))
+        library(cmdstanr)
+}
+
+# set_cmdstan_path('C:/Users/HW/.cmdstan/cmdstan-2.36.0')   # 设置cmdstan路径：填写包的安装位置所在路径
+
+# setwd("C:/1_Postgraduate/2_Lab/1_My_JC_Reports/2_methods/Tmp_BHM")   # 设置工作目录，自定义
+curDir = getwd()   # 获取当前工作路径
+
+set.seed(42)   # 随机种子，确保结果可复现
+knitr::opts_chunk$set(cache.extra = knitr::rand_seed)# 设置缓存，若随机数未变化则不重复运行已运行的代码块
+
+
+# 配置R包
+if (!require(pacman)){
+        install.packages("pacman")
+        library(pacman)
+}
+
+pacman::p_load(
+  "tidyverse",  # 数据处理
+  "ggplot2", # 数据可视化
+  "brms", # 贝叶斯建模
+  "bayesplot",  # 贝叶斯绘图
+  "bridgesampling",   # 计算贝叶斯因子
+  "papaja"   # 论文格式
+)
+```
+
+# 数据预处理
+```{r data_preprocess}
+# load in function
+# source(here::here("SPE_analysis", "Code", "Functions", "Function_run_lmer.R"))
+# 改为相对路径
+source("../../SPE_analysis/2_Code/Functions/Function_run_lmer.R")
+
+# set paths
+# dataPath = here::here("SPE_analysis/Data/exp1a/CleanData/")
+# resultDir = here::here("SPE_analysis/Data/exp1a/CleanData/")
+# 改为相对路径
+dataPath <- "../../SPE_analysis/3_Data/exp1a/CleanData/"
+resultDir <- "../../SPE_analysis/3_Data/exp1a/CleanData/"
+
+# load in data
+data_motion <- read.csv(file = file.path(dataPath, "data_motion.csv")) %>%
+  dplyr::mutate(
+    # R默认将因子第一个水平编码为0，其余为1，生成哑变量编码矩阵
+    association = factor(association, levels = c("self", "other")),
+    matchness = factor(isMatch, levels = c("match", "mismatch")),
+    difficulty = ordered(difficulty, levels = c("1", "2", "3", "4"))
+)
+data_color <- read.csv(file = file.path(dataPath, "data_color.csv"))
+df_motion_match <- read.csv(file = file.path(dataPath, "df_motion_diff_match.csv"))
+df_motion_rdk <- read.csv(file = file.path(dataPath, "df_motion_diff_rdk.csv"))
+df_color_match <- read.csv(file = file.path(dataPath, "df_color_diff_match.csv"))
+df_color_rdk <- read.csv(file = file.path(dataPath, "df_color_diff_rdk.csv"))
+
+# 将难度转换为因子型(顺序变量)
+data_motion$difficulty <- ordered(data_motion$difficulty, levels = c("1", "2", "3", "4"))
+data_color$difficulty <- ordered(data_color$difficulty, levels = c("1", "2", "3", "4"))
+df_motion_match$difficulty <- ordered(df_motion_match$difficulty, levels = c("1", "2", "3", "4"))
+df_motion_rdk$difficulty <- ordered(df_motion_rdk$difficulty, levels = c("1", "2", "3", "4"))
+df_color_match$difficulty <- ordered(df_color_match$difficulty, levels = c("1", "2", "3", "4"))
+df_color_rdk$difficulty <- ordered(df_color_rdk$difficulty, levels = c("1", "2", "3", "4"))
+
+# 将数据按任务进行拆分
+data_color_match <- data_color %>%
+  dplyr::filter(part %in% c('match_RDK'))
+data_color_rdk <- data_color %>%
+  dplyr::filter(part %in% c('RDK'))
+
+data_motion_match <- data_motion %>%
+  dplyr::filter(part %in% c('match_RDK'))
+data_motion_rdk <- data_motion %>%
+  dplyr::filter(part %in% c('RDK'))
+```
+
+# 检验假设一
+## 匹配任务
+### 因变量为RT
+#### 模型拟合：使用默认先验分布
+```{r warning=FALSE}
+# iter=1000,Total execution time: 852.2 seconds..18mins
+m1_motion_match_rt <- data_motion_match %>%
+  dplyr::filter(correct == "true") %>%
+  brms::brm(
+    rt ~ association*matchness + difficulty + (1|subj_idx),
+    data = .,  # 模型设定随实验设计变化
+    family=lognormal(),
+    chains = 4,   
+    warmup = 500,  
+    iter = 2000,  
+    thin = 1, 
+    control = list(adapt_delta = .95),   # 用于减少采样发散
+    cores = parallel::detectCores(),   # 使用所有可用核心
+    backend = 'cmdstanr',   # rstan（默认）；cmdstanr：基于 Stan 的现代 C++ 实现
+    save_pars = save_pars(all = TRUE),
+    file = file.path(curDir, "glmmModels/m1_motion_match_rt")   # 缓存模型
+)
+```
+
+#### 模型评估
+```{r}
+summary(m1_motion_match_rt)
+```
+
+```{r traceplot}
+mcmc_trace(m1_motion_match_rt, pars = c("b_Intercept", "b_associationother", "b_matchnessmismatch","b_associationother:matchnessmismatch","b_difficulty.L", "sigma"))
+```
+
+#### 后验预测
+```{r}
+pp_check(m1_motion_match_rt, type = "stat_grouped", group = "association")
+```
+
+#### 统计推断
+
+##### 基于HDI进行统计推断
+```{r}
+# 结果可视化
+
+# 计算固定效应均值与HDI，这部分summary里有
+df_rt_m1_pop_mean <- m1_motion_match_rt %>%
+        tidybayes::gather_draws(`b_.*`, regex = TRUE) %>%
+        group_by(.variable) %>%       # this line not necessary (done automatically by spread_draws)
+        tidybayes::mean_hdci(.value)  # get the high density continuous intervals
+
+# 提取固定效应后验分布
+df_rt_m1_pop <- m1_motion_match_rt %>% 
+        tidybayes::gather_draws(`b_.*`, regex = TRUE) %>%
+        dplyr::rename(term = .variable,
+                      pop_mean = .value) %>%
+        #tidyr::separate(term, c(NA, 'term'), "_") 
+        dplyr::ungroup() %>%
+        dplyr::mutate(term = gsub("b_", "", term))
+
+
+# 不同实验条件的固定效应后验分布
+df_m1_plot_rt <- df_rt_m1_pop %>%
+        dplyr::select(term, `.chain`, `.iteration`, `.draw`, pop_mean) %>%
+        tidyr::pivot_wider(names_from = c(term), values_from = pop_mean) %>%   # long to wide term包含各个β参数名称
+        # self和match被编码为0  
+        # 这部分需要根据实验设计变化
+        dplyr::mutate(self_M = Intercept,               
+                other_M = Intercept  + associationother,   # 需要根据term名称来写
+                self_NM = Intercept  + matchnessmismatch,
+                other_NM = Intercept  + matchnessmismatch + associationother + `associationother:matchnessmismatch`
+                ) %>%
+        dplyr::select(`.chain`, `.iteration`, `.draw`, self_M, other_M, self_NM, other_NM) %>%
+        tidyr::pivot_longer(cols = self_M:other_NM, names_to = "term", values_to =  "value") %>%  # wide to long
+        dplyr::mutate(term = factor(term, levels = c('self_M', 'other_M', 'self_NM', 'other_NM')),
+                      value = exp(value)) 
+
+# 计算匹配条件下不同图形的RT均值
+vlines <- df_m1_plot_rt %>% 
+        tidyr::separate(term, c('association', 'matchness')) %>% 
+        dplyr::mutate(association = factor(association, levels = c('self', 'other'))) %>%
+        dplyr::filter(matchness == 'M') %>%
+        dplyr::group_by(association) %>% 
+        dplyr::summarize(Mean = mean(value))
+
+# 描述固定效应的后验分布，根据HDI是否包含0进行统计推断（结果报告值取自该数据框）
+df_m1_rt_fixed_effect <- df_m1_plot_rt %>%
+        tidyr::pivot_wider(.,
+                           id_cols = c('.chain', '.iteration', '.draw'),
+                           names_from = term ) %>% 
+        dplyr::select(-c('.chain', '.iteration', '.draw')) %>%
+        bayestestR::describe_posterior(.,
+                                       ci = 0.95,
+                                       ci_method = 'hdi',
+                                       test = c("p_direction", "p_significance"),
+                                       centrality = "median") %>%
+        tidyr::separate(Parameter, c('association', 'matchness')) %>% 
+        dplyr::mutate(association = factor(association, levels = c('self', 'other')))
+
+# 匹配条件下，不同图形的固定效应后验分布可视化
+p_rt1 <- df_m1_plot_rt %>%
+        tidyr::separate(term, c('association', 'matchness')) %>% 
+        dplyr::mutate(association = factor(association, levels = c('self', 'other'))) %>%
+        dplyr::filter(matchness == 'M') %>%
+        ggplot2::ggplot(aes(x = value, color = association)) +
+        tidybayes::stat_halfeye(aes(fill = association), alpha = 0.7) +
+        geom_vline(data = vlines, aes(xintercept = Mean,colour = association), linetype = "dashed") +
+        labs(x=expression('Posteior distribution of reaction times')) + 
+        scale_colour_brewer(palette = "Dark2") +
+        scale_fill_brewer(palette = "Dark2") +
+        theme_apa(base_size = 20)
+p_rt1
+```
+
+
+```{r}
+# 计算不同条件下的反应时差异：根据实验设计变化
+df_m1_plot_rt_diff_wide <- df_m1_plot_rt %>%
+        tidyr::pivot_wider(names_from = c(term), values_from = value) %>%   # long to wide
+        dplyr::mutate(diff_M = self_M - other_M,      # calculate the differences between conditions
+                diff_NM = self_NM - other_NM) %>%
+        dplyr::select(`.chain`, `.iteration`, `.draw`,
+               diff_M, diff_NM) 
+
+# 宽转长，用于画图
+df_m1_plot_rt_diff <- df_m1_plot_rt_diff_wide%>%
+        tidyr::pivot_longer(cols = diff_M:diff_NM, names_to = "term_diff", values_to =  "value") %>%  # wide to long
+        dplyr::mutate(term_diff = factor(term_diff, levels = c('diff_M','diff_NM')))
+# 基于HDI推断不同条件间是否存在差异（结果报告取自该数据框）
+df_rt1_diff_hdi <- df_m1_plot_rt_diff %>%
+        tidyr::pivot_wider(.,
+                           id_cols = c('.chain', '.iteration', '.draw'),
+                           names_from = term_diff) %>%
+        dplyr::select(-c('.chain', '.iteration', '.draw')) %>%
+        bayestestR::describe_posterior(.,
+                                       ci = 0.95,
+                                       ci_method = 'hdi',
+                                       test = c("p_direction", "p_significance"),
+                                       centrality = "median")
+
+# 匹配条件下，不同图形的反应时差异可视化
+p_rt1_diff <- df_m1_plot_rt_diff %>%
+        # dplyr::filter(str_detect(term_diff, '_M')) %>%
+        ggplot2::ggplot(aes(x = value, fill = after_stat(x < 0))) +
+        tidybayes::stat_halfeye() +
+        geom_vline(xintercept = 0, linetype = "dashed") +# 添加x=0的垂线
+        # scale_fill_manual(values = c('gray80', 'skyblue')) +
+        scale_fill_manual(values = c('skyblue', 'gray80'),
+                    breaks = c(TRUE, FALSE),# 蓝色出现在true组，灰色出现在false组
+                    name = "Effect" , labels = c("Yes", "No")) + # 标签yes表示x<0
+        xlab("Effect of Association on RT") +
+        facet_wrap( ~ term_diff,
+              # scales = "free_y", 
+              nrow = 1)+
+        theme_apa(base_size = 15) + 
+        theme(strip.text.x = element_text(size = 8)) # colour = "orange", angle = 90))
+
+p_rt1_diff
+```
+
+### 因变量为ACC
+```{r}
+#  1126.9 seconds.
+m2_motion_match_acc <- data_motion_match %>%
+  dplyr::mutate(correct = ifelse(correct == "true", 1, 0)) %>%
+  brms::brm(
+    correct ~ association*matchness + difficulty + (1|subj_idx),
+    data = .,  # 模型设定随实验设计变化
+    family = "bernoulli",
+    chains = 4,   
+    warmup = 500,  
+    iter = 2000,  
+    thin = 1, 
+    control = list(adapt_delta = .95),   # 用于减少采样发散
+    cores = parallel::detectCores(),   # 使用所有可用核心
+    backend = 'cmdstanr',   # rstan（默认）；cmdstanr：基于 Stan 的现代 C++ 实现，速度更快且更稳定
+    save_pars = save_pars(all = TRUE),
+    file = file.path(curDir, "glmmModels/m2_motion_match_acc")   # 缓存模型
+)
+
+```
+
+```{r}
+# 模型评估
+summary(m2_motion_match_acc)
+```
+
+
+#### 后验预测
+```{r}
+pp_check(m2_motion_match_acc, type = "stat_grouped", group = "association")
+```
+
+
+#### 统计推断
+
+##### 基于HDI进行统计推断
+```{r}
+# 结果可视化
+
+# 计算固定效应均值与HDI，这部分summary里有
+df_acc_m2_pop_mean <- m2_motion_match_acc %>%
+        tidybayes::gather_draws(`b_.*`, regex = TRUE) %>%
+        group_by(.variable) %>%       # this line not necessary (done automatically by spread_draws)
+        tidybayes::mean_hdci(.value)  # get the high density continuous intervals
+
+# 提取固定效应后验分布
+df_acc_m2_pop <- m2_motion_match_acc %>% 
+        tidybayes::gather_draws(`b_.*`, regex = TRUE) %>%
+        dplyr::rename(term = .variable,
+                      pop_mean = .value) %>%
+        #tidyr::separate(term, c(NA, 'term'), "_") 
+        dplyr::ungroup() %>%
+        dplyr::mutate(term = gsub("b_", "", term))
+
+
+# 不同实验条件的固定效应后验分布
+df_m2_plot_acc <- df_acc_m2_pop %>%
+        dplyr::select(term, `.chain`, `.iteration`, `.draw`, pop_mean) %>%
+        tidyr::pivot_wider(names_from = c(term), values_from = pop_mean) %>%   # long to wide term包含各个β参数名称
+        # self和match被编码为0  
+        # 这部分需要根据实验设计变化
+        dplyr::mutate(self_M = Intercept,               
+                other_M = Intercept  + associationother,   # 需要根据term名称来写
+                self_NM = Intercept  + matchnessmismatch,
+                other_NM = Intercept  + matchnessmismatch + associationother + `associationother:matchnessmismatch`
+                ) %>%
+        dplyr::select(`.chain`, `.iteration`, `.draw`, self_M, other_M, self_NM, other_NM) %>%
+        tidyr::pivot_longer(cols = self_M:other_NM, names_to = "term", values_to =  "value") %>%  # wide to long
+        dplyr::mutate(term = factor(term, levels = c('self_M', 'other_M', 'self_NM', 'other_NM')),
+                      value = exp(value)) 
+
+# 计算匹配条件下不同图形的RT均值
+vlines <- df_m2_plot_acc %>% 
+        tidyr::separate(term, c('association', 'matchness')) %>% 
+        dplyr::mutate(association = factor(association, levels = c('self', 'other'))) %>%
+        dplyr::filter(matchness == 'M') %>%
+        dplyr::group_by(association) %>% 
+        dplyr::summarize(Mean = mean(value))
+
+# 描述固定效应的后验分布，根据HDI是否包含0进行统计推断（结果报告值取自该数据框）
+df_m2_acc_fixed_effect <- df_m2_plot_acc %>%
+        tidyr::pivot_wider(.,
+                           id_cols = c('.chain', '.iteration', '.draw'),
+                           names_from = term ) %>% 
+        dplyr::select(-c('.chain', '.iteration', '.draw')) %>%
+        bayestestR::describe_posterior(.,
+                                       ci = 0.95,
+                                       ci_method = 'hdi',
+                                       test = c("p_direction", "p_significance"),
+                                       centrality = "median") %>%
+        tidyr::separate(Parameter, c('association', 'matchness')) %>% 
+        dplyr::mutate(association = factor(association, levels = c('self', 'other')))
+
+# 匹配条件下，不同图形的固定效应后验分布可视化
+p_acc1 <- df_m2_plot_acc %>%
+        tidyr::separate(term, c('association', 'matchness')) %>% 
+        dplyr::mutate(association = factor(association, levels = c('self', 'other'))) %>%
+        dplyr::filter(matchness == 'M') %>%
+        ggplot2::ggplot(aes(x = value, color = association)) +
+        tidybayes::stat_halfeye(aes(fill = association), alpha = 0.7) +
+        geom_vline(data = vlines, aes(xintercept = Mean,colour = association), linetype = "dashed") +
+        labs(x=expression('Posteior distribution of correct')) + 
+        scale_colour_brewer(palette = "Dark2") +
+        scale_fill_brewer(palette = "Dark2") +
+        theme_apa(base_size = 20)
+p_acc1
+```
+
+```{r}
+# 计算不同条件下的correct差异：根据实验设计变化
+df_m2_plot_acc_diff_wide <- df_m2_plot_acc %>%
+        tidyr::pivot_wider(names_from = c(term), values_from = value) %>%   # long to wide
+        dplyr::mutate(diff_M = self_M - other_M,      # calculate the differences between conditions
+                diff_NM = self_NM - other_NM) %>%
+        dplyr::select(`.chain`, `.iteration`, `.draw`,
+               diff_M, diff_NM) 
+
+# 宽转长，用于画图
+df_m2_plot_acc_diff <- df_m2_plot_acc_diff_wide%>%
+        tidyr::pivot_longer(cols = diff_M:diff_NM, names_to = "term_diff", values_to =  "value") %>%  # wide to long
+        dplyr::mutate(term_diff = factor(term_diff, levels = c('diff_M','diff_NM')))
+# 基于HDI推断不同条件间是否存在差异（结果报告取自该数据框）
+df_acc1_diff_hdi <- df_m2_plot_acc_diff %>%
+        tidyr::pivot_wider(.,
+                           id_cols = c('.chain', '.iteration', '.draw'),
+                           names_from = term_diff) %>%
+        dplyr::select(-c('.chain', '.iteration', '.draw')) %>%
+        bayestestR::describe_posterior(.,
+                                       ci = 0.95,
+                                       ci_method = 'hdi',
+                                       test = c("p_direction", "p_significance"),
+                                       centrality = "median")
+
+# 匹配条件下，不同图形的反应时差异可视化
+p_acc1_diff <- df_m2_plot_acc_diff %>%
+        # dplyr::filter(str_detect(term_diff, '_M')) %>%
+        ggplot2::ggplot(aes(x = value, fill = after_stat(x > 0))) +
+        tidybayes::stat_halfeye() +
+        geom_vline(xintercept = 0, linetype = "dashed") +# 添加x=0的垂线
+        # scale_fill_manual(values = c('gray80', 'skyblue')) +
+        scale_fill_manual(values = c('skyblue', 'gray80'),
+                    breaks = c(TRUE, FALSE),# 蓝色出现在true组，灰色出现在false组
+                    name = "Effect" , labels = c("Yes", "No")) + # 标签yes表示x<0
+        xlab("Effect of Association on Correct") +
+        facet_wrap( ~ term_diff,
+              # scales = "free_y", 
+              nrow = 1)+
+        theme_apa(base_size = 15) + 
+        theme(strip.text.x = element_text(size = 8)) # colour = "orange", angle = 90))
+
+p_acc1_diff
+```
+
+## 辨别任务
+### 因变量为RT
+#### 模型拟合：使用默认先验分布
+```{r warning=FALSE}
+# iter=1000,Total execution time: 852.2 seconds..18mins
+m3_motion_rdk_rt <- data_motion_rdk %>%
+  dplyr::filter(correct == "true") %>%
+  brms::brm(
+    rt ~ association + difficulty + (1|subj_idx),
+    data = .,  # 模型设定随实验设计变化
+    family=lognormal(),
+    chains = 4,   
+    warmup = 500,  
+    iter = 2000,  
+    thin = 1, 
+    control = list(adapt_delta = .95),   # 用于减少采样发散
+    cores = parallel::detectCores(),   # 使用所有可用核心
+    backend = 'cmdstanr',   # rstan（默认）；cmdstanr：基于 Stan 的现代 C++ 
+    save_pars = save_pars(all = TRUE),
+    file = file.path(curDir, "glmmModels/m3_motion_rdk_rt")   # 缓存模型
+)
+```
+
+#### 模型评估
+```{r}
+summary(m3_motion_rdk_rt)
+```
+
+#### 后验预测
+```{r}
+pp_check(m3_motion_rdk_rt, type = "stat_grouped", group = "association")
+```
+
+#### 统计推断
+
+##### 基于HDI进行统计推断
+```{r}
+# 结果可视化
+
+# 计算固定效应均值与HDI，这部分summary里有
+df_rt_m3_pop_mean <- m3_motion_rdk_rt %>%
+        tidybayes::gather_draws(`b_.*`, regex = TRUE) %>%
+        group_by(.variable) %>%       # this line not necessary (done automatically by spread_draws)
+        tidybayes::mean_hdci(.value)  # get the high density continuous intervals
+
+# 提取固定效应后验分布
+df_rt_m3_pop <- m3_motion_rdk_rt %>% 
+        tidybayes::gather_draws(`b_.*`, regex = TRUE) %>%
+        dplyr::rename(term = .variable,
+                      pop_mean = .value) %>%
+        #tidyr::separate(term, c(NA, 'term'), "_") 
+        dplyr::ungroup() %>%
+        dplyr::mutate(term = gsub("b_", "", term))
+
+
+# 不同实验条件的固定效应后验分布
+df_m3_plot_rt <- df_rt_m3_pop %>%
+        dplyr::select(term, `.chain`, `.iteration`, `.draw`, pop_mean) %>%
+        tidyr::pivot_wider(names_from = c(term), values_from = pop_mean) %>%   # long to wide term包含各个β参数名称
+        # self被编码为0  
+        # 这部分需要根据实验设计变化
+        dplyr::mutate(self = Intercept,               
+                other = Intercept  + associationother) %>%
+        dplyr::select(`.chain`, `.iteration`, `.draw`, self, other) %>%
+        tidyr::pivot_longer(cols = self:other, names_to = "term", values_to =  "value") %>%  # wide to long
+        dplyr::mutate(term = factor(term, levels = c('self', 'other')),
+                      value = exp(value)) 
+
+# 计算匹配条件下不同图形的RT均值
+vlines <- df_m3_plot_rt %>% 
+        tidyr::separate(term, c('association')) %>% 
+        dplyr::mutate(association = factor(association, levels = c('self', 'other'))) %>%
+        dplyr::group_by(association) %>% 
+        dplyr::summarize(Mean = mean(value))
+
+# 描述固定效应的后验分布，根据HDI是否包含0进行统计推断（结果报告值取自该数据框）
+df_m3_rt_fixed_effect <- df_m3_plot_rt %>%
+        tidyr::pivot_wider(.,
+                           id_cols = c('.chain', '.iteration', '.draw'),
+                           names_from = term ) %>% 
+        dplyr::select(-c('.chain', '.iteration', '.draw')) %>%
+        bayestestR::describe_posterior(.,
+                                       ci = 0.95,
+                                       ci_method = 'hdi',
+                                       test = c("p_direction", "p_significance"),
+                                       centrality = "median") %>%
+        tidyr::separate(Parameter, c('association')) %>% 
+        dplyr::mutate(association = factor(association, levels = c('self', 'other')))
+
+# 匹配条件下，不同图形的固定效应后验分布可视化
+p_rt2 <- df_m3_plot_rt %>%
+        tidyr::separate(term, c('association')) %>% 
+        dplyr::mutate(association = factor(association, levels = c('self', 'other'))) %>%
+        ggplot2::ggplot(aes(x = value, color = association)) +
+        tidybayes::stat_halfeye(aes(fill = association), alpha = 0.7) +
+        geom_vline(data = vlines, aes(xintercept = Mean,colour = association), linetype = "dashed") +
+        labs(x=expression('Posteior distribution of correct')) + 
+        scale_colour_brewer(palette = "Dark2") +
+        scale_fill_brewer(palette = "Dark2") +
+        theme_apa(base_size = 20)
+p_rt2
+```
+
+
+```{r}
+# 计算不同条件下的rt差异：根据实验设计变化
+df_m3_plot_rt_diff_wide <- df_m3_plot_rt %>%
+        tidyr::pivot_wider(names_from = c(term), values_from = value) %>%   # long to wide
+        dplyr::mutate(diff = self - other) %>%
+        dplyr::select(`.chain`, `.iteration`, `.draw`,
+               diff) 
+
+# 宽转长，用于画图
+df_m3_plot_rt_diff <- df_m3_plot_rt_diff_wide%>%
+        tidyr::pivot_longer(cols = diff, names_to = "term_diff", values_to =  "value") %>%  # wide to long
+        dplyr::mutate(term_diff = factor(term_diff, levels = c('diff')))
+# 基于HDI推断不同条件间是否存在差异（结果报告取自该数据框）
+df_rt2_diff_hdi <- df_m3_plot_rt_diff %>%
+        tidyr::pivot_wider(.,
+                           id_cols = c('.chain', '.iteration', '.draw'),
+                           names_from = term_diff) %>%
+        dplyr::select(-c('.chain', '.iteration', '.draw')) %>%
+        bayestestR::describe_posterior(.,
+                                       ci = 0.95,
+                                       ci_method = 'hdi',
+                                       test = c("p_direction", "p_significance"),
+                                       centrality = "median")
+
+# 匹配条件下，不同图形的反应时差异可视化
+p_rt2_diff <- df_m3_plot_rt_diff %>%
+        # dplyr::filter(str_detect(term_diff, '_M')) %>%
+        ggplot2::ggplot(aes(x = value, fill = after_stat(x < 0))) +
+        tidybayes::stat_halfeye() +
+        geom_vline(xintercept = 0, linetype = "dashed") +# 添加x=0的垂线
+        # scale_fill_manual(values = c('gray80', 'skyblue')) +
+        scale_fill_manual(values = c('skyblue', 'gray80'),
+                    breaks = c(TRUE, FALSE),# 蓝色出现在true组，灰色出现在false组
+                    name = "Effect" , labels = c("Yes", "No")) + # 标签yes表示x<0
+        xlab("Effect of Association on RT") +
+        facet_wrap( ~ term_diff,
+              # scales = "free_y", 
+              nrow = 1)+
+        theme_apa(base_size = 15) + 
+        theme(strip.text.x = element_text(size = 8)) # colour = "orange", angle = 90))
+
+p_rt2_diff
+```
+
+### 因变量为ACC
+#### 模型拟合：使用默认先验分布
+```{r warning=FALSE}
+# iter=1000,Total execution time: 852.2 seconds..18mins
+m4_motion_rdk_acc <- data_motion_rdk %>%
+  dplyr::mutate(correct = ifelse(correct == "true", 1, 0)) %>%
+  brms::brm(
+    correct ~ association + difficulty + (1|subj_idx),
+    data = .,  # 模型设定随实验设计变化
+    family = "bernoulli",
+    chains = 4,   
+    warmup = 500,  
+    iter = 2000,  
+    thin = 1, 
+    control = list(adapt_delta = .95),   # 用于减少采样发散
+    cores = parallel::detectCores(),   # 使用所有可用核心
+    backend = 'cmdstanr',   # rstan（默认）；cmdstanr：基于 Stan 的现代 C++ 
+    save_pars = save_pars(all = TRUE),
+    file = file.path(curDir, "glmmModels/m4_motion_rdk_acc")   # 缓存模型
+)
+```
+
+#### 模型评估
+```{r}
+summary(m4_motion_rdk_acc)
+```
+
+#### 后验预测
+```{r}
+pp_check(m4_motion_rdk_acc, type = "stat_grouped", group = "association")
+```
+
+#### 统计推断
+
+##### 基于HDI进行统计推断
+```{r}
+# 结果可视化
+
+# 计算固定效应均值与HDI，这部分summary里有
+df_acc_m4_pop_mean <- m4_motion_rdk_acc %>%
+        tidybayes::gather_draws(`b_.*`, regex = TRUE) %>%
+        group_by(.variable) %>%       # this line not necessary (done automatically by spread_draws)
+        tidybayes::mean_hdci(.value)  # get the high density continuous intervals
+
+# 提取固定效应后验分布
+df_acc_m4_pop <- m4_motion_rdk_acc %>% 
+        tidybayes::gather_draws(`b_.*`, regex = TRUE) %>%
+        dplyr::rename(term = .variable,
+                      pop_mean = .value) %>%
+        #tidyr::separate(term, c(NA, 'term'), "_") 
+        dplyr::ungroup() %>%
+        dplyr::mutate(term = gsub("b_", "", term))
+
+
+# 不同实验条件的固定效应后验分布
+df_m4_plot_acc <- df_acc_m4_pop %>%
+        dplyr::select(term, `.chain`, `.iteration`, `.draw`, pop_mean) %>%
+        tidyr::pivot_wider(names_from = c(term), values_from = pop_mean) %>%   # long to wide term包含各个β参数名称
+        # self被编码为0  
+        # 这部分需要根据实验设计变化
+        dplyr::mutate(self = Intercept,               
+                other = Intercept  + associationother) %>%
+        dplyr::select(`.chain`, `.iteration`, `.draw`, self, other) %>%
+        tidyr::pivot_longer(cols = self:other, names_to = "term", values_to =  "value") %>%  # wide to long
+        dplyr::mutate(term = factor(term, levels = c('self', 'other')),
+                      value = exp(value)) 
+
+# 计算匹配条件下不同图形的RT均值
+vlines <- df_m4_plot_acc %>% 
+        tidyr::separate(term, c('association')) %>% 
+        dplyr::mutate(association = factor(association, levels = c('self', 'other'))) %>%
+        dplyr::group_by(association) %>% 
+        dplyr::summarize(Mean = mean(value))
+
+# 描述固定效应的后验分布，根据HDI是否包含0进行统计推断（结果报告值取自该数据框）
+df_m4_acc_fixed_effect <- df_m4_plot_acc %>%
+        tidyr::pivot_wider(.,
+                           id_cols = c('.chain', '.iteration', '.draw'),
+                           names_from = term ) %>% 
+        dplyr::select(-c('.chain', '.iteration', '.draw')) %>%
+        bayestestR::describe_posterior(.,
+                                       ci = 0.95,
+                                       ci_method = 'hdi',
+                                       test = c("p_direction", "p_significance"),
+                                       centrality = "median") %>%
+        tidyr::separate(Parameter, c('association')) %>% 
+        dplyr::mutate(association = factor(association, levels = c('self', 'other')))
+
+# 匹配条件下，不同图形的固定效应后验分布可视化
+p_acc2 <- df_m4_plot_acc %>%
+        tidyr::separate(term, c('association')) %>% 
+        dplyr::mutate(association = factor(association, levels = c('self', 'other'))) %>%
+        ggplot2::ggplot(aes(x = value, color = association)) +
+        tidybayes::stat_halfeye(aes(fill = association), alpha = 0.7) +
+        geom_vline(data = vlines, aes(xintercept = Mean,colour = association), linetype = "dashed") +
+        labs(x=expression('Posteior distribution of correct')) + 
+        scale_colour_brewer(palette = "Dark2") +
+        scale_fill_brewer(palette = "Dark2") +
+        theme_apa(base_size = 20)
+p_acc2
+```
+```{r}
+# 计算不同条件下的rt差异：根据实验设计变化
+df_m4_plot_acc_diff_wide <- df_m4_plot_acc %>%
+        tidyr::pivot_wider(names_from = c(term), values_from = value) %>%   # long to wide
+        dplyr::mutate(diff = self - other) %>%
+        dplyr::select(`.chain`, `.iteration`, `.draw`,
+               diff) 
+
+# 宽转长，用于画图
+df_m4_plot_acc_diff <- df_m4_plot_acc_diff_wide%>%
+        tidyr::pivot_longer(cols = diff, names_to = "term_diff", values_to =  "value") %>%  # wide to long
+        dplyr::mutate(term_diff = factor(term_diff, levels = c('diff')))
+# 基于HDI推断不同条件间是否存在差异（结果报告取自该数据框）
+df_acc2_diff_hdi <- df_m4_plot_acc_diff %>%
+        tidyr::pivot_wider(.,
+                           id_cols = c('.chain', '.iteration', '.draw'),
+                           names_from = term_diff) %>%
+        dplyr::select(-c('.chain', '.iteration', '.draw')) %>%
+        bayestestR::describe_posterior(.,
+                                       ci = 0.95,
+                                       ci_method = 'hdi',
+                                       test = c("p_direction", "p_significance"),
+                                       centrality = "median")
+
+# 匹配条件下，不同图形的反应时差异可视化
+p_acc2_diff <- df_m4_plot_acc_diff %>%
+        # dplyr::filter(str_detect(term_diff, '_M')) %>%
+        ggplot2::ggplot(aes(x = value, fill = after_stat(x > 0))) +
+        tidybayes::stat_halfeye() +
+        geom_vline(xintercept = 0, linetype = "dashed") +# 添加x=0的垂线
+        # scale_fill_manual(values = c('gray80', 'skyblue')) +
+        scale_fill_manual(values = c('skyblue', 'gray80'),
+                    breaks = c(TRUE, FALSE),# 蓝色出现在true组，灰色出现在false组
+                    name = "Effect" , labels = c("Yes", "No")) + # 标签yes表示x<0
+        xlab("Effect of Association on Correct") +
+        facet_wrap( ~ term_diff,
+              # scales = "free_y", 
+              nrow = 1)+
+        theme_apa(base_size = 15) + 
+        theme(strip.text.x = element_text(size = 8)) # colour = "orange", angle = 90))
+
+p_acc2_diff
+```
+
+# 检验假设二
+## 匹配任务
+### 因变量为RT
+
+#### 模型拟合
+```{r warning=FALSE}
+# iter=1000,Total execution time: 852.2 seconds..18mins
+m5_motion_match_rt <- df_motion_match %>%
+  brms::brm(
+    rt_diff_os ~ difficulty + (1|subj_idx),
+    data = .,  # 模型设定随实验设计变化
+    family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
+    chains = 4,   
+    warmup = 500,  
+    iter = 2000,  
+    thin = 1, 
+    control = list(adapt_delta = .95),   # 用于减少采样发散
+    cores = parallel::detectCores(),   # 使用所有可用核心
+    backend = 'cmdstanr', 
+    save_pars = save_pars(all = TRUE),
+    file = file.path(curDir, "glmmModels/m5_motion_match_rt")   # 缓存模型
+)
+```
+
+#### 模型评估
+```{r}
+summary(m5_motion_match_rt)
+```
+
+**可视化**
+```{r plot motion match}
+ggplot(df_motion_match, aes(x = difficulty, y = rt_diff_os, group = subj_idx)) +
+  geom_line(alpha = 0.5) +
+  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1.5) + labs(title = "SPE Across Difficulty Levels(Motion match task RT)", y = "SPE", x = NULL) +
+  papaja::theme_apa(base_size = 18) +
+  # 设置y轴范围
+  ylim(-300, 550) +
+  # 在y=0处添加一条黑色虚线
+  geom_hline(yintercept = 0, linetype = "dashed", color = "blue",size = 1) +
+  scale_x_discrete(labels = c("very easy", "easy", "difficulty", "very difficulty"))
+```
+
+### 因变量为ACC
+
+#### 模型拟合
+```{r warning=FALSE}
+# iter=1000,Total execution time: 852.2 seconds..18mins
+m6_motion_match_acc <- df_motion_match %>%
+  brms::brm(
+    acc_diff_so ~ difficulty + (1|subj_idx),
+    data = .,  # 模型设定随实验设计变化
+    # family=lognormal(),
+    family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
+    chains = 4,   
+    warmup = 500,  
+    iter = 2000,  
+    thin = 1, 
+    control = list(adapt_delta = .95),   # 用于减少采样发散
+    cores = parallel::detectCores(),   # 使用所有可用核心
+    backend = 'cmdstanr',   # rstan（默认）；cmdstanr：基于 Stan 的现代 C++ 实现，速度更快且更稳定
+    save_pars = save_pars(all = TRUE),
+    file = file.path(curDir, "glmmModels/m6_motion_match_acc")   # 缓存模型
+)
+```
+
+#### 模型评估
+```{r}
+summary(m6_motion_match_acc)
+```
+
+**可视化**
+```{r plot motion match}
+ggplot(df_motion_match, aes(x = difficulty, y = acc_diff_so, group = subj_idx)) +
+  geom_line(alpha = 0.5) +
+  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1.5) + labs(title = "SPE Across Difficulty Levels(Motion match task ACC)", y = "SPE", x = NULL) +
+  papaja::theme_apa(base_size = 18) +
+  # 设置y轴范围
+  # ylim(-300, 550) +
+  # 在y=0处添加一条黑色虚线
+  geom_hline(yintercept = 0, linetype = "dashed", color = "blue",size = 1) +
+  scale_x_discrete(labels = c("very easy", "easy", "difficulty", "very difficulty"))
+```
+
+## 辨别任务
+### 因变量为RT
+
+#### 模型拟合
+```{r warning=FALSE}
+# iter=1000,Total execution time: 852.2 seconds..18mins
+m7_motion_rdk_rt <- df_motion_rdk %>%
+  brms::brm(
+    rt_diff_os ~ difficulty + (1|subj_idx),
+    data = .,  # 模型设定随实验设计变化
+    # family=lognormal(),
+    family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
+    chains = 4,   
+    warmup = 500,  
+    iter = 2000,  
+    thin = 1, 
+    control = list(adapt_delta = .95),   # 用于减少采样发散
+    cores = parallel::detectCores(),   # 使用所有可用核心
+    backend = 'cmdstanr',   # rstan（默认）；cmdstanr：基于 Stan 的现代 C++ 实现，速度更快且更稳定
+    save_pars = save_pars(all = TRUE),
+    file = file.path(curDir, "glmmModels/m7_motion_rdk_rt")   # 缓存模型
+)
+```
+
+#### 模型评估
+```{r}
+summary(m7_motion_rdk_rt)
+```
+**可视化**
+```{r plot motion rdk}
+ggplot(df_motion_rdk, aes(x = difficulty, y = rt_diff_os, group = subj_idx)) +
+  geom_line(alpha = 0.5) +
+  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1.5) + labs(title = "SPE Across Difficulty Levels(Motion rdk task RT)", y = "SPE") +
+  papaja::theme_apa(base_size = 18) +
+  # 设置y轴范围
+  ylim(-200, 300) +
+  # 在y=0处添加一条黑色虚线
+  geom_hline(yintercept = 0, linetype = "dashed", color = "blue", size = 1) +
+  scale_x_discrete(labels = c("very easy", "easy", "difficulty", "very difficulty"))
+```
+
+### 因变量为ACC
+
+#### 模型拟合
+```{r warning=FALSE}
+# iter=1000,Total execution time: 852.2 seconds..18mins
+m8_motion_rdk_acc <- df_motion_rdk %>%
+  brms::brm(
+    acc_diff_so ~ difficulty + (1|subj_idx),
+    data = .,  # 模型设定随实验设计变化
+    # family=lognormal(),
+    family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
+    chains = 4,   
+    warmup = 500,  
+    iter = 2000,  
+    thin = 1, 
+    control = list(adapt_delta = .95),   # 用于减少采样发散
+    cores = parallel::detectCores(),   # 使用所有可用核心
+    backend = 'cmdstanr',   # rstan（默认）；cmdstanr：基于 Stan 的现代 C++ 实现，速度更快且更稳定
+    save_pars = save_pars(all = TRUE),
+    file = file.path(curDir, "glmmModels/m8_motion_rdk_acc")   # 缓存模型
+)
+```
+
+#### 模型评估
+```{r}
+summary(m8_motion_rdk_acc)
+```
+
+**可视化**
+```{r plot motion rdk}
+ggplot(df_motion_rdk, aes(x = difficulty, y = acc_diff_so, group = subj_idx)) +
+  geom_line(alpha = 0.5) +
+  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "red", size = 1.5) + labs(title = "SPE Across Difficulty Levels(Motion rdk task ACC)", y = "SPE", x = NULL) +
+  papaja::theme_apa(base_size = 18) +
+  # 设置y轴范围
+  # ylim(-300, 550) +
+  # 在y=0处添加一条黑色虚线
+  geom_hline(yintercept = 0, linetype = "dashed", color = "blue",size = 1) +
+  scale_x_discrete(labels = c("very easy", "easy", "difficulty", "very difficulty"))
+```
+
