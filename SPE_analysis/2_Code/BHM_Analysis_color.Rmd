@@ -112,7 +112,7 @@ data_motion_rdk <- data_motion %>%
 m1_color_match_rt <- data_color_match %>%
   dplyr::filter(correct == 1) %>%
   brms::brm(
-    rt ~ association*matchness + difficulty + (1|subj_idx),
+    rt ~ association*matchness + difficulty + (1 + association*matchness + difficulty|subj_idx),
     data = .,  # 模型设定随实验设计变化
     family=lognormal(),
     chains = 4,   
@@ -272,7 +272,7 @@ p_rt1_diff
 m2_color_match_acc <- data_color_match %>%
   # dplyr::mutate(correct = ifelse(correct == "true", 1, 0)) %>%
   brms::brm(
-    correct ~ association*matchness + difficulty + (1|subj_idx),
+    correct ~ association*matchness + difficulty + (1 + association*matchness + difficulty|subj_idx),
     data = .,  # 模型设定随实验设计变化
     family = "bernoulli",
     chains = 4,   
@@ -427,7 +427,7 @@ p_acc1_diff
 m3_color_rdk_rt <- data_color_rdk %>%
   dplyr::filter(correct == 1) %>%
   brms::brm(
-    rt ~ association + difficulty + (1|subj_idx),
+    rt ~ association + difficulty + (1 + association + difficulty|subj_idx),
     data = .,  # 模型设定随实验设计变化
     family=lognormal(),
     chains = 4,   
@@ -574,7 +574,7 @@ p_rt2_diff
 m4_color_rdk_acc <- data_color_rdk %>%
   # dplyr::mutate(correct = ifelse(correct == "true", 1, 0)) %>%
   brms::brm(
-    correct ~ association + difficulty + (1|subj_idx),
+    correct ~ association + difficulty + (1 + association + difficulty|subj_idx),
     data = .,  # 模型设定随实验设计变化
     family = "bernoulli",
     chains = 4,   
@@ -721,7 +721,7 @@ p_acc2_diff
 # iter=1000,Total execution time: 852.2 seconds..18mins
 m5_color_match_rt <- df_color_match %>%
   brms::brm(
-    rt_diff_os ~ difficulty + (1|subj_idx),
+    rt_diff_os ~ difficulty + (1 + difficulty|subj_idx),
     data = .,  # 模型设定随实验设计变化
     family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
     chains = 4,   
@@ -761,7 +761,7 @@ ggplot(df_color_match, aes(x = difficulty, y = rt_diff_os, group = subj_idx)) +
 # iter=1000,Total execution time: 852.2 seconds..18mins
 m6_color_match_acc <- df_color_match %>%
   brms::brm(
-    acc_diff_so ~ difficulty + (1|subj_idx),
+    acc_diff_so ~ difficulty + (1 + difficulty|subj_idx),
     data = .,  # 模型设定随实验设计变化
     # family=lognormal(),
     family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
@@ -803,7 +803,7 @@ ggplot(df_color_match, aes(x = difficulty, y = acc_diff_so, group = subj_idx)) +
 # iter=1000,Total execution time: 852.2 seconds..18mins
 m7_color_rdk_rt <- df_color_rdk %>%
   brms::brm(
-    rt_diff_os ~ difficulty + (1|subj_idx),
+    rt_diff_os ~ difficulty + (1 + difficulty|subj_idx),
     data = .,  # 模型设定随实验设计变化
     # family=lognormal(),
     family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
@@ -843,7 +843,7 @@ ggplot(df_color_rdk, aes(x = difficulty, y = rt_diff_os, group = subj_idx)) +
 # iter=1000,Total execution time: 852.2 seconds..18mins
 m8_color_rdk_acc <- df_color_rdk %>%
   brms::brm(
-    acc_diff_so ~ difficulty + (1|subj_idx),
+    acc_diff_so ~ difficulty + (1 + difficulty|subj_idx),
     data = .,  # 模型设定随实验设计变化
     # family=lognormal(),
     family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),

@@ -100,9 +100,9 @@ data_motion_rdk <- data_motion %>%
 ```{r warning=FALSE}
 # iter=1000,Total execution time: 852.2 seconds..18mins
 m1_motion_match_rt <- data_motion_match %>%
-  dplyr::filter(correct == "true") %>%
+  dplyr::filter(correct == 1) %>%
   brms::brm(
-    rt ~ association*matchness + difficulty + (1|subj_idx),
+    rt ~ association*matchness+difficulty + (1 + association*matchness+difficulty|subj_idx),
     data = .,  # 模型设定随实验设计变化
     family=lognormal(),
     chains = 4,   
@@ -256,9 +256,9 @@ p_rt1_diff
 ```{r}
 #  1126.9 seconds.
 m2_motion_match_acc <- data_motion_match %>%
-  dplyr::mutate(correct = ifelse(correct == "true", 1, 0)) %>%
+  # dplyr::mutate(correct = ifelse(correct == "true", 1, 0)) %>%
   brms::brm(
-    correct ~ association*matchness + difficulty + (1|subj_idx),
+    correct ~ association*matchness + difficulty + (1 + association*matchness + difficulty|subj_idx),
     data = .,  # 模型设定随实验设计变化
     family = "bernoulli",
     chains = 4,   
@@ -412,9 +412,9 @@ p_acc1_diff
 ```{r warning=FALSE}
 # iter=1000,Total execution time: 852.2 seconds..18mins
 m3_motion_rdk_rt <- data_motion_rdk %>%
-  dplyr::filter(correct == "true") %>%
+  dplyr::filter(correct == 1) %>%
   brms::brm(
-    rt ~ association + difficulty + (1|subj_idx),
+    rt ~ association + difficulty + (1 + association + difficulty|subj_idx),
     data = .,  # 模型设定随实验设计变化
     family=lognormal(),
     chains = 4,   
@@ -502,7 +502,7 @@ p_rt2 <- df_m3_plot_rt %>%
         ggplot2::ggplot(aes(x = value, color = association)) +
         tidybayes::stat_halfeye(aes(fill = association), alpha = 0.7) +
         geom_vline(data = vlines, aes(xintercept = Mean,colour = association), linetype = "dashed") +
-        labs(x=expression('Posteior distribution of correct')) + 
+        labs(x=expression('Posteior distribution of RT')) + 
         scale_colour_brewer(palette = "Dark2") +
         scale_fill_brewer(palette = "Dark2") +
         theme_apa(base_size = 20)
@@ -559,9 +559,9 @@ p_rt2_diff
 ```{r warning=FALSE}
 # iter=1000,Total execution time: 852.2 seconds..18mins
 m4_motion_rdk_acc <- data_motion_rdk %>%
-  dplyr::mutate(correct = ifelse(correct == "true", 1, 0)) %>%
+  # dplyr::mutate(correct = ifelse(correct == "true", 1, 0)) %>%
   brms::brm(
-    correct ~ association + difficulty + (1|subj_idx),
+    correct ~ association + difficulty + (1 + association + difficulty|subj_idx),
     data = .,  # 模型设定随实验设计变化
     family = "bernoulli",
     chains = 4,   
@@ -708,7 +708,7 @@ p_acc2_diff
 # iter=1000,Total execution time: 852.2 seconds..18mins
 m5_motion_match_rt <- df_motion_match %>%
   brms::brm(
-    rt_diff_os ~ difficulty + (1|subj_idx),
+    rt_diff_os ~ difficulty + (1 + difficulty|subj_idx),
     data = .,  # 模型设定随实验设计变化
     family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
     chains = 4,   
@@ -748,7 +748,7 @@ ggplot(df_motion_match, aes(x = difficulty, y = rt_diff_os, group = subj_idx)) +
 # iter=1000,Total execution time: 852.2 seconds..18mins
 m6_motion_match_acc <- df_motion_match %>%
   brms::brm(
-    acc_diff_so ~ difficulty + (1|subj_idx),
+    acc_diff_so ~ difficulty + (1 + difficulty|subj_idx),
     data = .,  # 模型设定随实验设计变化
     # family=lognormal(),
     family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
@@ -790,7 +790,7 @@ ggplot(df_motion_match, aes(x = difficulty, y = acc_diff_so, group = subj_idx)) 
 # iter=1000,Total execution time: 852.2 seconds..18mins
 m7_motion_rdk_rt <- df_motion_rdk %>%
   brms::brm(
-    rt_diff_os ~ difficulty + (1|subj_idx),
+    rt_diff_os ~ difficulty + (1 + difficulty|subj_idx),
     data = .,  # 模型设定随实验设计变化
     # family=lognormal(),
     family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
@@ -830,7 +830,7 @@ ggplot(df_motion_rdk, aes(x = difficulty, y = rt_diff_os, group = subj_idx)) +
 # iter=1000,Total execution time: 852.2 seconds..18mins
 m8_motion_rdk_acc <- df_motion_rdk %>%
   brms::brm(
-    acc_diff_so ~ difficulty + (1|subj_idx),
+    acc_diff_so ~ difficulty + (1 + difficulty|subj_idx),
     data = .,  # 模型设定随实验设计变化
     # family=lognormal(),
     family = brmsfamily("gaussian", link = "identity", link_sigma = "log"),
