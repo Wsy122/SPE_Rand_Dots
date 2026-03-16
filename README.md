@@ -16,7 +16,15 @@ The experiment employed a 2 × 4 × 2 mixed design:
 ## Folder Structure
 ```
 └── 1_Procedure/
-|    └── exp1a
+|    └── exp1
+|      └── img/ # Stimulus images
+|      └── jspsych-7.0/ # jsPsych library
+|      └── template_Expt/ # HTML and JavaScript templates
+|        └── color.js
+|        └── move.js
+|        └── getThreshold.js
+|      └── index.html # Main experiment page
+|    └── exp2
 |      └── img/ # Stimulus images
 |      └── jspsych-7.0/ # jsPsych library
 |      └── template_Expt/ # HTML and JavaScript templates
@@ -26,10 +34,18 @@ The experiment employed a 2 × 4 × 2 mixed design:
 |      └── index.html # Main experiment page
 |     
 └── 2_Code/
-│    └── Functions/
-│    └── Analysis_exp1a.Rmd
-│    └── Data_clean.Rmd
-│    └── SBFA_SPE_exp.Rmd
+|    └── exp1 
+|      └── HDDM/
+│      └── Functions/
+│      └── Data_clean.Rmd
+│      └── SBFA_SPE_exp.Rmd
+|      └── BHM_Analysis_motion.Rmd
+|      └── BHM_Analysis_color.Rmd
+|    └── exp2
+│      └── Functions/
+│      └── Data_clean.Rmd
+│      └── SBFA_SPE_exp.Rmd
+|      └── BHM_Analysis.Rmd
 |
 └── 3_Data/ 
 ```
