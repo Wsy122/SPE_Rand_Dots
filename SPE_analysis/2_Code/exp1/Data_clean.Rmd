@@ -1,0 +1,905 @@
+---
+title: "Data Claening"
+output: html_notebook
+---
+
+```{r}
+rm(list = ls())
+```
+
+**加载所需要的包**
+```{r}
+# 配置R包
+if (!require(pacman)){
+        install.packages("pacman")
+        library(pacman)
+}
+
+pacman::p_load(
+  "tidyverse", "ggplot2", "cowplot", "bruceR","ggstatsplot", "papaja",
+  "palmerpenguins", "dplyr", "patchwork", "RColorBrewer"
+)
+
+source("../../SPE_analysis/2_Code/Functions/R_rainclouds.R")
+```
+
+## 1. 读取数据
+
+**读取目录下的原始数据**
+
+```{r}
+# 设置目标文件夹的上级路径
+parent_folder <- "../3_Data/exp1a/RawData/"
+
+# 指定需要读取的子文件夹名称
+sub_folders <- c("motion", "color")
+
+# 创建空列表存储所有文件路径
+all_file_list <- c()
+
+# 遍历每个子文件夹，收集符合条件的文件路径
+for (folder in sub_folders) {
+  # 拼接完整的文件夹路径
+  folder_path <- file.path(parent_folder, folder)
+  
+  # 列出当前文件夹中符合条件的文件
+  file_list <- list.files(
+    path = folder_path,
+    pattern = "*exp1a_subj.*\\.csv$", 
+    full.names = TRUE
+  )
+  
+  # 将当前文件夹的文件路径添加到总列表中
+  all_file_list <- c(all_file_list, file_list)
+}
+
+# 创建一个空列表来存储所有数据
+df_list_1 <- list()
+
+# 逐个读取文件并存储（保留原文件名作为列表元素名称）
+for (file in all_file_list) {
+  # 获取文件名（不带扩展名）
+  file_name <- tools::file_path_sans_ext(basename(file))  
+  # 将数据存储在列表中
+  tryCatch({
+    df_list_1[[file_name]] <- read.csv(file)
+  })
+}
+
+# 可选：查看读取的文件数量和名称
+cat("共读取", length(df_list_1), "个文件")
+print(names(df_list_1))
+```
+## 2. 数据清洗
+
+```{r}
+# 创建输出文件夹（如果不存在）
+output_path <- "../3_Data/exp1a/CleanData"
+if (!dir.exists(output_path)) {
+  dir.create(output_path, recursive = TRUE)
+}
+
+# 逐篇处理每个数据框
+for (file_name in names(df_list_1)) {
+  data <- df_list_1[[file_name]]
+
+  # 提取被试信息
+  participant_info <- data[data$part == "survey", "response"]
+  participant_info <- gsub("[{}\"]", "", participant_info) # 去掉多余的字符
+  info_list <- strsplit(participant_info, ",")[[1]]
+
+  # 创建新的变量
+  participant_data <- data.frame(
+    subj_idx = file_name,
+    Sex = as.character(NA),
+    Age = as.numeric(NA),
+    Handedness = as.character(NA),
+    Color_blindness = as.character(NA),
+    stringsAsFactors = FALSE
+  )
+  
+  # 先按照下划线分割字符串
+  split_data <- strsplit(participant_data$subj_idx, "_")
+  # 提取分割后的第3个元素（数字部分在第3个位置，可根据实际调整）并转换为数值
+  participant_data$subj_idx <- as.numeric(lapply(split_data, function(x) {
+    gsub("[^0-9]", "", x[[3]])  # 提取纯数字部分
+  }))
+
+  for (info in info_list) {
+    key_value <- strsplit(info, ":")[[1]]
+    key <- trimws(key_value[1])
+    value <- trimws(key_value[2])
+    if (key == "sex"){
+      participant_data$Sex <- switch(
+        value, "男" = 1, "女" = 2
+      )
+    }
+    if (key == "age") participant_data$Age <- as.numeric(value)
+    if (key == "hands") participant_data$Handedness <- value
+    if (key == "color_blindness") participant_data$Color_blindness <- value
+  }
+
+  # 提取行为数据
+  behavior_data <- data[
+    data$part %in% c("motion_test","match_RDK","RDK"),
+    c(
+      "part", "rt", "response", "correct", "coherent_direction","coherence", 
+      "isMatch", "association", "difficulty", "dot_color_final","target_color_proportion"
+    )
+  ]
+  
+  # 分别提取正式试次
+  official_trials <- do.call(
+    rbind,
+    lapply(unique(behavior_data$part), function(part) {
+      part_data <- behavior_data[behavior_data$part == part, ]
+      if (part == "match_RDK") {
+        return(tail(part_data, 384)) # 匹配任务384次
+      } else if (part == "RDK") {
+        return(tail(part_data, 192)) # 辨别任务192次
+      } else {
+        return(NULL)
+      }
+    })
+  )
+
+  # 合并被试信息和行为数据
+  final_data <- cbind(participant_data, official_trials)
+
+  # 输出到新的CSV文件
+  output_file <- file.path(output_path, paste0(file_name, "_Clean.csv"))
+  write.csv(final_data, output_file, row.names = FALSE)
+}
+```
+
+
+**读取清洗后的数据**
+
+```{r message=FALSE}
+# 设置目标文件夹相对路径
+folder_path <- "../3_Data/exp1a/CleanData"
+
+# 列出所有含有"pilot_expt_"的csv文件
+file_list <- list.files(
+  path = folder_path,
+  pattern = "*exp1a_subj_.*\\.csv$", full.names = TRUE
+)
+
+# 创建一个空列表来存储数据
+df_list_1 <- list()
+
+# 逐个读取文件并存储
+for (file in file_list) {
+  file_name <- tools::file_path_sans_ext(basename(file)) # 获取文件名（不带扩展名）
+  df_list_1[[file_name]] <- read.csv(file) # 将数据存储在列表中
+}
+
+# 清除不需要的变量
+rm(participant_info, info_list, participant_data, split_data,
+   behavior_data, official_trials, final_data, output_file, file, file_list,
+   file_name, folder_path, info, key, key_value, value)
+
+# 把 df_list_1 传送给 data
+data <- do.call(rbind, df_list_1)
+```
+
+## 3. 被试人口学信息统计
+```{r}
+# 基于有效被试的人口学信息统计
+df.basic <- data %>%
+  dplyr::select(subj_idx, Age, Sex) %>%
+  dplyr::distinct(subj_idx, .keep_all = TRUE) %>%  # 根据subject去重，保留完整行
+  # 创建分组变量（1-70为运动组，71-141为颜色组）
+  dplyr::mutate(
+    subj_group = dplyr::case_when(
+      subj_idx >= 1 & subj_idx <= 70 ~ "Group1 (motion)",
+      subj_idx >= 71 & subj_idx <= 141 ~ "Group2 (color)",
+    )
+  ) %>%
+  # 按创建的分组变量分组，再汇总统计
+  dplyr::group_by(subj_group) %>%
+  dplyr::summarise(
+    N = length(subj_idx),  # 每组总人数
+    Nf = length(Sex[Sex == "2"]),  # 每组女性人数（Sex=2）
+    Nm = length(Sex[Sex == "1"]),  # 每组男性人数（Sex=1）
+    Age_mean = round(mean(Age, na.rm = TRUE), 2),  # 每组平均年龄
+    Age_sd = round(sd(Age, na.rm = TRUE), 2),  # 每组年龄标准差
+    .groups = "drop"  # 取消分组，返回普通数据框
+  )
+
+df.basic
+```
+## 4. 数据预处理
+
+定义函数，用来计算平均反应时、正确率和自我-他人差异(SPE)
+
+```{r}
+# 计算平均正确率和反应时
+compute_rt_acc <- function(data){
+  data <- data %>%
+    dplyr::filter(part %in% c("match_RDK","RDK")) %>%
+    dplyr::filter(rt != -1) %>%
+    dplyr::group_by(subj_idx, part, difficulty, association) %>%
+    dplyr::summarise(
+      # rt = mean(rt, na.rm = TRUE),  # 所有有效 trials 的平均反应时
+      rt = mean(rt[correct == 1 & rt >= 100 & rt <= 3000], na.rm = TRUE),  # 仅正确 trials 的平均反应时
+      acc = sum(correct == 1 & rt >= 100 & rt <= 3000, na.rm = TRUE) / n(),  # 正确率
+      .groups = "drop")
+  
+  return(data)
+}
+
+# 计算自我-他人差异，即SPE
+compute_diff <- function(data, keepMatch=FALSE){
+  # 决定分组变量
+  group_vars <- if(keepMatch) {
+    c("subj_idx", "part", "difficulty", "difficulty_code", "isMatch")
+  } else {
+    c("subj_idx", "part", "difficulty", "difficulty_code")
+  }
+  
+  # 执行数据处理流程
+  data_agg <- data %>%
+    dplyr::filter(part %in% c("match_RDK","RDK")) %>%
+    dplyr::group_by_at(group_vars) %>%  # 使用 group_by_at 接受变量名向量
+    dplyr::summarise(
+      rt_other = mean(rt[association == "other"], na.rm = TRUE),
+      rt_self = mean(rt[association == "self"], na.rm = TRUE),
+      acc_other = mean(acc[association == "other"], na.rm = TRUE),
+      acc_self = mean(acc[association == "self"], na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # 计算差值
+  data_result <- data_agg %>%
+    dplyr::mutate(
+      rt_diff_os = rt_other - rt_self, # 反应时越快越好，他人-自我 > 0 为自我优势
+      acc_diff_so = acc_self - acc_other # 正确率越高越好，自我-他人 > 0 为自我优势
+    )
+  
+  return(data_result)
+}
+```
+
+分别提取运动和颜色的数据
+
+```{r}
+data <- data %>%
+  #对反应时进行筛选
+  dplyr::filter(rt >= 100 & rt <= 3000, !is.na(rt)) 
+# Motion
+data1 <- data %>%
+  dplyr::filter(
+    subj_idx %in% c( seq(1, 70))) %>%  # 被试编号 1-70 为运动组
+  #对反应时进行筛选
+  # dplyr::filter(rt >= 100 & rt <= 3000, !is.na(rt)) %>%
+  # 先将correct转换为数值型（TRUE=1, FALSE=0）
+  dplyr::mutate(correct = as.numeric(as.logical(correct))) %>%
+  # 计算每个被试的正确率
+  dplyr::group_by(subj_idx, part, difficulty) %>%
+  dplyr::mutate(subj_acc = mean(correct, na.rm = TRUE)) %>%
+  dplyr::ungroup()
+
+# data_motion <- data1 %>%
+#   dplyr::select(
+#     subj_idx, rt, correct, coherence, part, response, coherent_direction,
+#     isMatch, association, difficulty
+#   ) %>%
+#   dplyr::mutate(rt = rt / 1000) # 把rt转换为以秒为单位
+
+data_motion <- data1 %>%
+  dplyr::select(
+    subj_idx, rt, correct, coherence, part, response, coherent_direction,
+    isMatch, association, difficulty, difficulty_code
+  ) %>%
+  # 先将correct转换为数值型（TRUE=1, FALSE=0）
+  dplyr::mutate(correct = as.numeric(as.logical(correct))) %>%
+  dplyr::mutate(rt = rt / 1000) # 把rt转换为以秒为单位
+
+# 输出到新的CSV文件
+output_file <- base::file.path(output_path, "data_motion.csv")
+utils::write.csv(data_motion, output_file, row.names = FALSE)
+
+
+data_motion_rt_acc <- compute_rt_acc(data1) %>%
+  dplyr::mutate(group = "motion") %>%
+  dplyr::mutate(
+    difficulty_code = factor(
+      difficulty,
+      levels = c(1, 2, 3, 4),
+      labels = c("very easy", "easy", "difficult", "very difficult")
+    )
+  )
+
+
+data_motion_diff <- compute_diff(data_motion_rt_acc) %>%
+  #类型为character的转换为因子类型，便于后续分析
+  dplyr::mutate(subj_idx = as.factor(subj_idx))
+
+# Color
+data2 <- data %>%
+  dplyr::filter(
+    subj_idx %in% c( seq(70, 141))) %>% # 后70为颜色
+  #对反应时进行筛选
+  # dplyr::filter(rt >= 200 & rt <= 3000, !is.na(rt)) %>%
+  # 先将correct转换为数值型（TRUE=1, FALSE=0）
+  dplyr::mutate(correct = as.numeric(as.logical(correct))) %>%
+  # 计算每个被试的正确率
+  dplyr::group_by(subj_idx, part, difficulty) %>%
+  dplyr::mutate(subj_acc = mean(correct, na.rm = TRUE)) %>%
+  dplyr::ungroup()
+
+data_color <- data2 %>%
+  dplyr::select(
+    subj_idx, rt, correct, coherence, part, response, dot_color_final,
+    isMatch, association, difficulty, difficulty_code
+  ) %>%
+  dplyr::mutate(correct = as.numeric(as.logical(correct))) %>%
+  dplyr::mutate(rt = rt / 1000)
+
+# 输出到新的CSV文件
+output_file <- base::file.path(output_path, "data_color.csv")
+utils::write.csv(data_color, output_file, row.names = FALSE)
+
+data_color_rt_acc <- compute_rt_acc(data2) %>%
+  dplyr::mutate(group = "color") %>%
+  dplyr::mutate(
+    difficulty_code = factor(
+      difficulty,
+      levels = c(1, 2, 3, 4),
+      labels = c("very easy", "easy", "difficult", "very difficult")
+    )
+  )
+
+
+data_color_diff <- compute_diff(data_color_rt_acc) %>%
+  #类型为character的转换为因子类型，便于后续分析
+  dplyr::mutate(subj_idx = as.factor(subj_idx))
+
+data_color_diff <- compute_diff(data_color_rt_acc) %>%
+  #类型为character的转换为因子类型，便于后续分析
+  dplyr::mutate(subj_idx = as.factor(subj_idx))
+```
+
+
+### 数据整理
+
+#### 运动组-匹配任务
+
+```{r}
+df_motion_match <- data_motion_rt_acc %>% 
+  dplyr::filter(# difficulty %in% c(1, 4), 
+    part %in% c('match_RDK')) %>%
+  dplyr::select(subj_idx, acc, rt, association, difficulty, difficulty_code, group) %>%
+  #类型为character的转换为因子类型，便于后续分析
+  dplyr::mutate(subj_idx = as.factor(subj_idx),
+         association = as.factor(association))
+
+# 输出到新的CSV文件
+  output_file <- base::file.path(output_path, "df_motion_match.csv")
+  utils::write.csv(df_motion_match, output_file, row.names = FALSE)
+
+df_motion_diff_match <- data_motion_diff %>%
+  # 只选择难度为1 和 4 的
+  dplyr::filter(# difficulty %in% c(1,2,3,4), 
+         part %in% c('match_RDK')) %>%
+  dplyr::select(subj_idx, acc_diff_so, rt_diff_os, difficulty, difficulty_code) %>%
+  #类型为character的转换为因子类型，便于后续分析
+  dplyr::mutate(subj_idx = as.factor(subj_idx))#  %>%
+  # tidyr::pivot_wider(
+    # names_from = difficulty,
+    # values_from = c(acc_diff_so, rt_diff_os),  # 同时处理acc和rt列
+    # names_glue = "{.value}_{difficulty}" ) 
+
+data_motion_match_jasp <- df_motion_match %>%
+  # dplyr::select(subj_idx, acc, rt, association, difficulty, group) %>%
+  # 组合 part、difficulty、association 为新列名（用下划线连接）
+  mutate(new_col = paste(difficulty, association, sep = "_")) %>%
+  # 转换为宽表：行由 subj_idx、isMatch、group 定义，列由 new_col 定义，数值为 rt 和 acc
+  pivot_wider(
+    id_cols = c(subj_idx, group),  # 保持这些列为行标识
+    names_from = new_col,                  # 用 new_col 的值作为新列名
+    values_from = c(rt, acc),              # 分别将 rt 和 acc 转换为宽表数值
+    # names_sep = "_"                        # 列名中用下划线分隔（可选，增强可读性）
+  )
+
+# 输出到新的CSV文件
+output_file <- base::file.path(output_path, "df_motion_diff_match.csv")
+utils::write.csv(df_motion_diff_match, output_file, row.names = FALSE)
+output_file <- base::file.path(output_path, "data_motion_match_jasp.csv")
+utils::write.csv(data_motion_match_jasp, output_file, row.names = FALSE)
+```
+
+#### 运动组-辨别任务
+
+```{r}
+df_motion_rdk <- data_motion_rt_acc %>% 
+  dplyr::filter(# difficulty %in% c(1, 4), 
+    part %in% c('RDK')) %>%
+  dplyr::select(subj_idx, acc, rt, association, difficulty, difficulty_code, group) %>%
+  #类型为character的转换为因子类型，便于后续分析
+  dplyr::mutate(subj_idx = as.factor(subj_idx),
+         association = as.factor(association))
+
+# 输出到新的CSV文件
+output_file <- base::file.path(output_path, "df_motion_rdk.csv")
+utils::write.csv(df_motion_rdk, output_file, row.names = FALSE)
+
+df_motion_diff_rdk <- data_motion_diff %>%
+  # 只选择难度为1 和 4 的
+  dplyr::filter(difficulty %in% c(1, 2, 3, 4), part %in% c('RDK')) %>%
+  dplyr::select(subj_idx, acc_diff_so, rt_diff_os, difficulty, difficulty_code) %>%
+  #类型为character的转换为因子类型，便于后续分析
+  dplyr::mutate(subj_idx = as.factor(subj_idx)) # %>%
+  # tidyr::pivot_wider(
+    # names_from = difficulty,
+    # values_from = c(acc_diff_so, rt_diff_os),  # 同时处理acc和rt列
+    # names_glue = "{.value}_{difficulty}" ) 
+
+data_motion_rdk_jasp <- df_motion_rdk %>%
+  # 组合 part、difficulty、association 为新列名（用下划线连接）
+  mutate(new_col = paste(difficulty, association, sep = "_")) %>%
+  # 转换为宽表：行由 subj_idx、isMatch、group 定义，列由 new_col 定义，数值为 rt 和 acc
+  pivot_wider(
+    id_cols = c(subj_idx, group),  # 保持这些列为行标识
+    names_from = new_col,                  # 用 new_col 的值作为新列名
+    values_from = c(rt, acc),              # 分别将 rt 和 acc 转换为宽表数值
+    # names_sep = "_"                        # 列名中用下划线分隔（可选，增强可读性）
+  )
+
+
+# 输出到新的CSV文件
+output_file <- base::file.path(output_path, "df_motion_diff_rdk.csv")
+utils::write.csv(df_motion_diff_rdk, output_file, row.names = FALSE)
+output_file <- base::file.path(output_path, "data_motion_rdk_jasp.csv")
+utils::write.csv(data_motion_rdk_jasp, output_file, row.names = FALSE)
+```
+
+#### 颜色组-匹配任务
+
+```{r}
+df_color_match <- data_color_rt_acc %>% 
+  dplyr::filter(# difficulty %in% c(1, 4), 
+    part %in% c('match_RDK')) %>%
+  dplyr::select(subj_idx, acc, rt, association, difficulty, difficulty_code, group) %>%
+  #类型为character的转换为因子类型，便于后续分析
+  dplyr::mutate(subj_idx = as.factor(subj_idx),
+         association = as.factor(association))
+
+
+# 输出到新的CSV文件
+output_file <- base::file.path(output_path, "df_color_match.csv")
+utils::write.csv(df_color_match, output_file, row.names = FALSE)
+
+df_color_diff_match <- data_color_diff %>%
+  # 只选择难度为1 和 4 的
+  dplyr::filter(difficulty %in% c(1, 2, 3, 4),
+         part %in% c('match_RDK')) %>%
+  dplyr::select(subj_idx, acc_diff_so, rt_diff_os, difficulty, difficulty_code) %>%
+  #类型为character的转换为因子类型，便于后续分析
+  dplyr::mutate(subj_idx = as.factor(subj_idx)) # %>%
+  # tidyr::pivot_wider(
+    # names_from = difficulty,
+    # values_from = c(acc_diff_so, rt_diff_os),  # 同时处理acc和rt列
+    # names_glue = "{.value}_{difficulty}" ) 
+
+# 输出到新的CSV文件
+output_file <- base::file.path(output_path, "df_color_diff_match.csv")
+utils::write.csv(df_color_diff_match, output_file, row.names = FALSE)
+```
+
+#### 颜色组-辨别任务
+
+```{r}
+df_color_rdk <- data_color_rt_acc %>% 
+  dplyr::filter(# difficulty %in% c(1, 4), 
+    part %in% c('RDK')) %>%
+  dplyr::select(subj_idx, acc, rt, association, difficulty, difficulty_code, group) %>%
+  #类型为character的转换为因子类型，便于后续分析
+  dplyr::mutate(subj_idx = as.factor(subj_idx),
+         association = as.factor(association))
+
+# 输出到新的CSV文件
+output_file <- base::file.path(output_path, "df_color_rdk.csv")
+utils::write.csv(df_color_rdk, output_file, row.names = FALSE)
+
+df_color_diff_rdk <- data_color_diff %>%
+  # 只选择难度为1 和 4 的
+  dplyr::filter(difficulty %in% c(1, 2, 3, 4), part %in% c('RDK')) %>%
+  dplyr::select(subj_idx, acc_diff_so, rt_diff_os, difficulty, difficulty_code) %>%
+  #类型为character的转换为因子类型，便于后续分析
+  dplyr::mutate(subj_idx = as.factor(subj_idx)) # %>%
+  # tidyr::pivot_wider(
+    # names_from = difficulty,
+    # values_from = c(acc_diff_so, rt_diff_os),  # 同时处理acc和rt列
+    # names_glue = "{.value}_{difficulty}" ) 
+
+
+# 输出到新的CSV文件
+output_file <- base::file.path(output_path, "df_color_diff_rdk.csv")
+utils::write.csv(df_color_diff_rdk, output_file, row.names = FALSE)
+```
+
+## 5. 数据预览
+
+对各组任务的平均正确率和反应时进行可视化
+```{r}
+matching_task_analysis <- function(data, task){
+  
+  # 获取数据名
+  data_name <- deparse(substitute(data))
+  # 从数据名中区分不同的组别（增加容错，避免拆分失败）
+  split_result <- strsplit(data_name, "_")[[1]]
+  group <- ifelse(length(split_result)>=2, split_result[2], "Unknown")
+  group <- paste(group, collapse = "_")
+  
+  # 数据预处理
+  data <- data %>% 
+    filter(part == task) %>% 
+    dplyr::mutate(
+      difficulty = as.factor(difficulty)  # 难度转为因子
+      # 不再需要将subj_idx转为因子，因为不再用它映射颜色
+    )
+  
+  # ------------ 用RColorBrewer设置配色 ------------
+  # 获取难度的水平数量
+  n_difficulty <- length(unique(data$difficulty))
+  # 选择合适的配色方案（可根据需求替换，如"Set2", "Paired", "Spectral"等）
+  # 若难度数量超过配色数量，自动循环补充
+  color_palette <- brewer.pal(min(n_difficulty, 8), "Set2")  # Set2是美观的离散配色
+  if (n_difficulty > length(color_palette)) {
+    color_palette <- rep(color_palette, length.out = n_difficulty)
+  }
+  
+  # ACC plot (match condition)
+  acc_plot <- ggplot(
+    data,
+    aes(x = difficulty, y = acc, fill = difficulty, colour = difficulty)) +
+    # 小提琴图：使用难度的颜色
+    geom_flat_violin(
+      position = position_nudge(x = .2, y = 0), 
+      adjust = 1.2, 
+      trim = FALSE, 
+      alpha = 0.7) +  # 提高透明度，更美观
+    # 散点图：颜色和小提琴图一致（映射difficulty，不再用subj_idx）
+    geom_jitter(
+      aes(color = difficulty),  # 关键：散点颜色和难度一致
+      width = 0.15, 
+      size = 1,                 # 调整点大小
+      alpha = 0.6) +            # 散点透明度，避免重叠
+    # 箱线图：黑色边框，无填充，突出分布
+    geom_boxplot(
+      aes(x = difficulty, y = acc), 
+      outlier.shape = NA, 
+      alpha = 0.5, 
+      width = .1, 
+      colour = "BLACK",
+      fill = NA) +
+    # 坐标轴和刻度
+    ylab("ACC") + 
+    xlab("Difficulty") + 
+    coord_flip() +
+    scale_y_continuous(breaks = seq(0, 1, by = 0.1)) +
+    # ------------ 应用RColorBrewer配色 ------------
+    scale_fill_manual(values = color_palette) +
+    scale_colour_manual(values = color_palette) +
+    # 主题和图例
+    theme_cowplot() + 
+    guides(fill = "none", colour = "none") +  # 隐藏图例（如需显示可改为TRUE）
+    ggtitle(group) +
+    theme(
+      plot.title = element_text(size = 12, hjust = 0.5),
+      axis.text = element_text(size = 10),
+      axis.title = element_text(size = 11)
+    )
+
+  # RT plot (match condition)
+  rt_plot <- ggplot(
+    data,
+    aes(x = difficulty, y = rt, fill = difficulty, colour = difficulty)) +
+    # 小提琴图：使用难度的颜色
+    geom_flat_violin(
+      position = position_nudge(x = .2, y = 0), 
+      adjust = 1.2, 
+      trim = FALSE, 
+      alpha = 0.7) +
+    # 散点图：颜色和小提琴图一致
+    geom_jitter(
+      aes(color = difficulty),
+      width = 0.1, 
+      size = 1,
+      alpha = 0.6) +
+    # 箱线图：黑色边框，无填充
+    geom_boxplot(
+      aes(x = difficulty, y = rt), 
+      outlier.shape = NA, 
+      alpha = 0.5, 
+      width = .1, 
+      colour = "BLACK",
+      fill = NA) +
+    # 坐标轴
+    ylab("RT (ms)") + 
+    xlab(' ') + 
+    coord_flip() +
+    # 应用相同的配色
+    scale_fill_manual(values = color_palette) +
+    scale_colour_manual(values = color_palette) +
+    # 主题和图例
+    theme_cowplot() + 
+    guides(fill = "none", colour = "none") +
+    theme(
+      axis.text = element_text(size = 10),
+      axis.title = element_text(size = 11)
+    )
+  
+  # 组合图（修复标题拼写错误：match tack → Matching Task）
+  plot_title <- paste0(task, " ", group)
+  combined_plot <- acc_plot + rt_plot +
+    plot_annotation(
+      title = plot_title,
+      theme = theme(plot.title = element_text(size = 20, hjust = 0.5, face = "bold"))
+    ) +
+    plot_layout(ncol = 2, widths = c(1, 1))  # 明确2列布局，保证比例均匀
+  
+  # 打印组合图
+  print(combined_plot)
+  
+  # 可选：返回组合图对象，方便后续保存
+  return(invisible(combined_plot))
+}
+```
+
+### 匹配任务
+```{r}
+
+# 调用函数
+matching_task_analysis(data_motion_rt_acc, "match_RDK")
+matching_task_analysis(data_color_rt_acc, "match_RDK")
+```
+
+### 辨别任务
+```{r}
+
+# 调用函数
+matching_task_analysis(data_motion_rt_acc, "RDK")
+matching_task_analysis(data_color_rt_acc, "RDK")
+```
+
+```{r}
+# 整合两个任务的可视化函数（带被试连线 + 全包名前缀）
+task_combined_analysis <- function(data, task1 = "match_RDK", task2 = "RDK") {
+  
+  # 获取数据名并提取组别（仅使用基础R函数，无需包前缀）
+  data_name <- deparse(substitute(data))
+  split_result <- strsplit(data_name, "_")[[1]]
+  group <- ifelse(length(split_result)>=2, split_result[2], "Unknown")
+  group <- paste(group, collapse = "_")
+  
+  # 数据预处理：合并两个任务的数据，统一格式（所有函数带包前缀）
+  data_combined <- data %>% 
+    # dplyr::filter 筛选两个任务的数据
+    dplyr::filter(part %in% c(task1, task2)) %>% 
+    # dplyr::mutate 标准化任务名称、转换因子
+    dplyr::mutate(
+      task = dplyr::case_when(
+        part == task1 ~ "Matching Task",  # 匹配任务
+        part == task2 ~ "Discrimination Task",  # 辨别任务
+        TRUE ~ part
+      ),
+      difficulty = base::as.factor(difficulty),  # 难度转为因子（base是R基础包）
+      subj_idx = base::as.factor(subj_idx)       # 被试ID转为因子（用于连线）
+    ) %>% 
+    # tidyr::drop_na 移除缺失值
+    tidyr::drop_na(acc, rt)
+  
+  # 定义配色方案（任务+难度组合）
+  n_difficulty <- base::length(base::unique(data_combined$difficulty_code))
+  color_palette <- RColorBrewer::brewer.pal(base::min(n_difficulty, 8), "Set2")
+  if (n_difficulty > base::length(color_palette)) {
+    color_palette <- base::rep(color_palette, length.out = n_difficulty)
+  }
+  base::names(color_palette) <- base::unique(data_combined$difficulty_code)  # 难度对应颜色
+  
+  # ========== ACC 图（带被试连线） ==========
+  acc_plot <- ggplot2::ggplot(data_combined, ggplot2::aes(x = task, y = acc)) +
+    # 箱线图：黑色边框，突出分布（ggplot2::geom_boxplot）
+    ggplot2::geom_boxplot(
+      ggplot2::aes(x = task, y = acc), 
+      outlier.shape = NA, 
+      alpha = 0.5, 
+      width = .1, 
+      colour = "BLACK",
+      fill = NA
+    ) +
+    # 被试散点：按难度着色（ggplot2::geom_jitter）
+    ggplot2::geom_jitter(
+      ggplot2::aes(color = difficulty_code), 
+      width = 0.05, 
+      size = 1, 
+      alpha = 0.5
+    ) +
+    # 被试连线：同一被试在两个任务间的连线（ggplot2::geom_line）
+    ggplot2::geom_line(
+      ggplot2::aes(group = base::interaction(subj_idx, difficulty_code), color = difficulty_code), 
+      alpha = 0.3, 
+      linewidth = 0.5
+    ) +
+    # 分面：按难度拆分（每行一个难度）（ggplot2::facet_wrap）
+    ggplot2::facet_wrap(~difficulty_code, nrow = n_difficulty) +
+    # 坐标轴设置（ggplot2::ylab/xlab/scale_y_continuous）
+    ggplot2::ylab("Accuracy") + 
+    ggplot2::xlab("Task Type") + 
+    ggplot2::scale_y_continuous(breaks = base::seq(0, 1, by = 0.1), limits = c(0, 1)) +
+    # 配色应用（ggplot2::scale_fill_manual/scale_colour_manual）
+    ggplot2::scale_fill_manual(values = color_palette) +
+    ggplot2::scale_colour_manual(values = color_palette) +
+    # ggplot2::coord_flip() + 
+    # 主题优化（cowplot::theme_cowplot / ggplot2::guides/theme/element_text）
+    cowplot::theme_cowplot() + 
+    ggplot2::guides(fill = "none", colour = "none") +  # 隐藏图例（难度已在分面显示）
+    ggplot2::ggtitle(base::paste("Accuracy")) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(size = 14, hjust = 0.5, face = "bold"),
+      axis.text = ggplot2::element_text(size = 10),
+      axis.title = ggplot2::element_text(size = 12),
+      strip.text = ggplot2::element_text(size = 11, face = "bold")  # 分面标题（难度）加粗
+    )
+  
+  # ========== RT 图（带被试连线） ==========
+  rt_plot <- ggplot2::ggplot(data_combined, ggplot2::aes(x = task, y = rt)) +
+    # 箱线图：黑色边框（ggplot2::geom_boxplot）
+    ggplot2::geom_boxplot(
+      ggplot2::aes(x = task, y = rt), 
+      outlier.shape = NA, 
+      alpha = 0.5, 
+      width = .1, 
+      colour = "BLACK",
+      fill = NA
+    ) +
+    # 被试散点：按难度着色（ggplot2::geom_jitter）
+    ggplot2::geom_jitter(
+      ggplot2::aes(color = difficulty_code), 
+      width = 0.05, 
+      size = 1, 
+      alpha = 0.5
+    ) +
+    # 被试连线：同一被试在两个任务间的连线（ggplot2::geom_line）
+    ggplot2::geom_line(
+      ggplot2::aes(group = base::interaction(subj_idx, difficulty_code), color = difficulty_code), 
+      alpha = 0.3, 
+      linewidth = 0.5
+    ) +
+    # 分面：按难度拆分（ggplot2::facet_wrap）
+    ggplot2::facet_wrap(~difficulty_code, nrow = n_difficulty) +
+    # 坐标轴设置（ggplot2::ylab/xlab）
+    ggplot2::ylab("Reaction Time (ms)") + 
+    ggplot2::xlab("Task Type") + 
+    # 配色应用（ggplot2::scale_fill_manual/scale_colour_manual）
+    ggplot2::scale_fill_manual(values = color_palette) +
+    ggplot2::scale_colour_manual(values = color_palette) +
+    # ggplot2::coord_flip() + 
+    # 主题优化（cowplot::theme_cowplot）
+    cowplot::theme_cowplot() + 
+    ggplot2::guides(fill = "none", colour = "none") +
+    ggplot2::ggtitle(base::paste("Reaction Time")) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(size = 14, hjust = 0.5, face = "bold"),
+      axis.text = ggplot2::element_text(size = 10),
+      axis.title = ggplot2::element_text(size = 12),
+      strip.text = ggplot2::element_text(size = 11, face = "bold")
+    )
+  
+  # ========== 组合ACC和RT图 ==========
+  combined_plot <- acc_plot + rt_plot +
+    patchwork::plot_annotation(
+      title = base::paste(group),
+      theme = ggplot2::theme(plot.title = ggplot2::element_text(size = 16, hjust = 0.5, face = "bold"))
+    ) +
+    patchwork::plot_layout(ncol = 2, widths = c(1, 1))  # 两列布局，比例均匀
+  
+  # 打印组合图（基础R函数print）
+  base::print(combined_plot)
+  
+  # 返回图对象（方便保存）
+  return(base::invisible(combined_plot))
+}
+
+# ========== 补充：如果你想改用papaja::theme_apa()主题 ==========
+# 只需将函数中所有 cowplot::theme_cowplot() 替换为 papaja::theme_apa()，示例：
+# acc_plot <- acc_plot + papaja::theme_apa()
+# rt_plot <- rt_plot + papaja::theme_apa()
+```
+
+```{r}
+plot_result_motion <- task_combined_analysis(data_motion_rt_acc, task1 = "match_RDK", task2 = "RDK")
+plot_result_color <- task_combined_analysis(data_color_rt_acc, task1 = "match_RDK", task2 = "RDK")
+```
+
+```{r}
+# 加载必要包（仅保留核心包）
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# 主函数：计算不同难度下ACC和RT的两两差值
+diff_difficulty_simple <- function(
+  data,  # 输入数据集（如df_color_diff_match、df_motion_diff_match）
+  acc_col = "acc_diff_so",  # ACC列名
+  rt_col = "rt_diff_os",    # RT列名
+  difficulty_col = "difficulty") {
+  
+  # 将难度转为因子型，提取所有难度水平
+  data <- data %>% mutate(!!sym(difficulty_col) := as.factor(!!sym(difficulty_col)))
+  difficulty_levels <- levels(data[[difficulty_col]])
+  
+  # 生成所有难度的两两组合（不重复，如1&2、1&3，而非2&1）
+  difficulty_combos <- combn(difficulty_levels, 2, simplify = FALSE)
+  
+  # 计算每对难度的ACC和RT差值
+  diff_results <- lapply(difficulty_combos, function(combo) {
+    # 提取两个难度的数据
+    d1 <- data %>% filter(!!sym(difficulty_col) == combo[1])
+    d2 <- data %>% filter(!!sym(difficulty_col) == combo[2])
+    
+    # 计算均值（也可计算中位数，替换为median即可）
+    acc_mean1 <- mean(d1[[acc_col]], na.rm = TRUE)
+    acc_mean2 <- mean(d2[[acc_col]], na.rm = TRUE)
+    rt_mean1 <- mean(d1[[rt_col]], na.rm = TRUE)
+    rt_mean2 <- mean(d2[[rt_col]], na.rm = TRUE)
+    
+    # 计算差值（难度1 - 难度2，也可改为难度2 - 难度1）
+    acc_diff <- acc_mean1 - acc_mean2
+    rt_diff <- rt_mean1 - rt_mean2
+    
+    # 返回结果
+    return(tibble(
+      难度组合 = paste(combo[1], "vs", combo[2]),
+      难度1 = combo[1],
+      难度2 = combo[2],
+      ACC_难度1均值 = acc_mean1,
+      ACC_难度2均值 = acc_mean2,
+      ACC差值 = acc_diff,
+      RT_难度1均值 = rt_mean1,
+      RT_难度2均值 = rt_mean2,
+      RT差值 = rt_diff
+    ))
+  }) %>% bind_rows()
+  
+  # 按ACC差值绝对值排序（也可按RT差值排序，修改为abs(RT差值)即可）
+  diff_results <- diff_results %>% arrange(desc(abs(ACC差值)))
+  
+  # 输出结果
+  cat("=== 不同难度下ACC和RT的两两差值（按ACC差值大小排序）===\n")
+  print(diff_results)
+  
+  # 可视化差值（可选，直观看差异）
+  diff_plot <- diff_results %>%
+    select(难度组合, ACC差值, RT差值) %>%
+    pivot_longer(cols = c(ACC差值, RT差值), names_to = "指标", values_to = "差值") %>%
+    ggplot(aes(x = 难度组合, y = 差值, fill = 指标)) +
+    geom_col(alpha = 0.7, position = "dodge") +
+    labs(x = "难度组合", y = "差值（前一个难度减后一个）", title = "不同两两难度下SPE的差值") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  print(diff_plot)
+  
+  # 返回结果
+  return(diff_results)
+}
+```
+
+```{r}
+diff_difficulty_simple(df_motion_diff_match)
+diff_difficulty_simple(df_color_diff_match)
+
+```
+
+
+```{r}
+diff_difficulty_simple(df_motion_diff_rdk)
+diff_difficulty_simple(df_color_diff_rdk)
+
+```
+
+

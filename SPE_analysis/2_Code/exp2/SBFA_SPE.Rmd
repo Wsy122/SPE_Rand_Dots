@@ -1,0 +1,153 @@
+---
+title: "采用贝叶斯序列分析确定样本量-EXP2"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+documentclass: ctexart
+output:
+  html_document:
+    fig_caption: true
+    number_sections: true
+    toc: true
+  pdf_document:
+    toc: true
+geometry: left=2cm,right=2cm,top=2cm,bottom=2cm
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+-   停止规则：
+    -   贝叶斯因子阈值确定为10
+    -   最小样本量40，最大样本量60
+-   研究假设
+    -   关联类型与任务类型的交互
+        -   任务相关条件下不存在SPE
+        -   任务无关条件下存在SPE
+    -   难度会调节任务无关条件下的SPE
+        -   任务越困难，SPE越明显
+-   **研究的关键假设：**关联类型和任务类型之间存在交互。这一关键研究假设是本研究决定何时停止数据收集的关键效应量
+-   在此处只检验是否存在交互作用
+
+
+```{r}
+rm(list = ls())
+```
+
+下载和安装需要的R语言程序包
+
+```{r message=FALSE, warning=FALSE}
+# install.packages(c("tidyverse", "BayesFactor", "here"))
+library(BayesFactor)#计算t检验和方差分析的贝叶斯因子
+packageVersion("BayesFactor")
+library(tidyverse)
+library(showtext)#解决中文字体无法显示问题
+library(latex2exp)#latex语法
+# font_add("song", 
+         # "/System/Library/Fonts/Supplemental/Songti.ttc")
+##从系统增加宋体字
+showtext_auto()
+library(here)
+here()
+options(scipen = 9)#将科学计数法改为在万后9位
+set.seed(1234)
+```
+
+加载函数
+
+```{r}
+source(here::here("Functions/Function_bf_avo.R"))
+source(here::here("Functions/Function_plot_avo.R"))
+```
+
+## 读取清洗后的数据
+
+```{r}
+# 文件路径和文件名根据实际情况调整
+# 设置目标文件夹相对路径
+folder_path <- "../../3_Data/3_2_exp2/CleanData"
+
+# 列出目标文件
+file_list <- list.files(
+  path = folder_path,
+  pattern = "*df_.*\\.csv$", full.names = TRUE
+) # 这里根据实际命名进行修改
+
+
+# 初始化一个列表用于存储数据框
+df_list <- list()
+for (i in seq_along(file_list)) {
+  # 去掉文件后缀，作为数据框在列表中的名称
+  df_name <- tools::file_path_sans_ext(file_list[i])
+  df_list[[df_name]] <- read.csv(file_list[i])
+}
+
+# 将列表中的数据框单独赋值到全局环境（可选）
+# list2env(df_list, envir = .GlobalEnv)
+
+# 定义需要转换的变量名
+factor_vars <- c("subj_idx", "association", "difficulty")
+
+# 提取数据框
+df_color_diff_match <- df_list[[1]] 
+df_color_diff_rdk <- df_list[[2]] 
+df_color_match <- df_list[[3]] %>% 
+  dplyr::mutate(dplyr::across(all_of(factor_vars), as.factor))
+df_color_rdk <- df_list[[4]] %>% 
+  dplyr::mutate(dplyr::across(all_of(factor_vars), as.factor))
+
+df_motion_diff_match <- df_list[[5]]
+df_motion_diff_rdk <- df_list[[6]]
+df_motion_match <- df_list[[7]] %>% 
+  dplyr::mutate(dplyr::across(all_of(factor_vars), as.factor))
+df_motion_rdk <- df_list[[8]] %>% 
+  dplyr::mutate(dplyr::across(all_of(factor_vars), as.factor))
+```
+
+
+## BF 值计算
+
+```{r}
+data_sbfa <- data_sbfa %>% 
+  dplyr::filter(part %in% c('RDK_color', 'RDK_motion')) %>%
+  dplyr::mutate(subj_idx = as.factor(subj_idx))
+```
+
+
+### ACC
+
+```{r}
+bfs_acc <- bf_aov(data_sbfa, 'acc')
+
+bfs_acc
+```
+
+**可视化**
+
+```{r}
+plot_bfs_association <- plot_aov(bfs_acc, 'bfs_association', 'Association effect (ACC)')
+plot_bfs_association
+
+plot_bfs_int <- plot_aov(bfs_acc, 'bfs_int', 'Interaction (ACC)')
+plot_bfs_int
+```
+
+####RT
+
+```{r}
+bfs_rt <- bf_aov(data_sbfa, 'rt')
+
+bfs_rt
+```
+
+**可视化**
+
+```{r}
+plot_bfs_association <- plot_aov(bfs_rt, 'bfs_association', 'Association effect (RT)')
+plot_bfs_association
+
+plot_bfs_int <- plot_aov(bfs_rt, 'bfs_int', 'Interaction (RT)')
+plot_bfs_int
+```
+
+
+
+**End**

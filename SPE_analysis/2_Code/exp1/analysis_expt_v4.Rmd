@@ -1,0 +1,980 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+rm(list = ls())
+```
+
+# 加载定义函数
+
+```{r setup, include=FALSE}
+source("../3_3_pilot_expt_v4/R_rainclouds.R")
+```
+
+# 读取目录下数据 pilot_expt_v4
+
+```{r}
+# 设置目标文件夹相对路径
+folder_path <- "../../2_Experiments/2_1_Pilot_Experiment/2_1_2_RawData/pilot_expt_all"
+
+# 列出所有含有"pilot_expt_v4_"的csv文件
+file_list <- list.files(
+  path = folder_path,
+  pattern = "*pilot_expt_0421_.*\\.csv$", full.names = TRUE
+)
+
+
+# 创建一个空列表来存储数据
+df_list_1 <- list()
+
+# 逐个读取文件并存储
+for (file in file_list) {
+  file_name <- tools::file_path_sans_ext(basename(file))  # 获取文件名（不带扩展名）
+  df_list_1[[file_name]] <- read.csv(file)  # 将数据存储在列表中
+}
+#rm(file, file_list, folder_path)
+```
+
+
+# 数据清洗
+
+```{r}
+# 创建输出文件夹（如果不存在）
+output_path <- "../../2_Experiments/2_1_Pilot_Experiment/2_1_3_CleanData/pilot_expt_all"
+if (!dir.exists(output_path)) {
+  dir.create(output_path, recursive = TRUE)
+}
+
+# 逐篇处理每个数据框
+for (file_name in names(df_list_1)) {
+  data <- df_list_1[[file_name]]
+
+  # 提取被试信息
+  participant_info <- data[data$part == "survey", "response"]
+  participant_info <- gsub("[{}\"]", "", participant_info) # 去掉多余的字符
+  info_list <- strsplit(participant_info, ",")[[1]]
+
+  # 创建新的变量
+  participant_data <- data.frame(
+    subj_id = file_name,
+    Sex = as.character(NA),
+    Age = as.numeric(NA),
+    Handedness = as.character(NA),
+    Color_blindness = as.character(NA),
+    stringsAsFactors = FALSE
+  )
+  
+  # 先按照下划线分割字符串
+  split_data <- strsplit(participant_data$subj_id, "_")
+  # 提取分割后的第四个元素（数字部分在第四个位置，可根据实际调整）并转换为数值
+  participant_data$subj_id <- as.numeric(lapply(split_data, function(x) substr(x[[4]], 1, 2)))
+
+  for (info in info_list) {
+    key_value <- strsplit(info, ":")[[1]]
+    key <- trimws(key_value[1])
+    value <- trimws(key_value[2])
+    if (key == "sex") participant_data$Sex <- value
+    if (key == "age") participant_data$Age <- as.numeric(value)
+    if (key == "hands") participant_data$Handedness <- value
+    if (key == "color_blindness") participant_data$Color_blindness <- value
+  }
+
+  # 提取行为数据
+  behavior_data <- data[
+    data$part %in% c("motion_test","match_RDK","RDK"),
+    c(
+      "part", "rt", "response", "correct", "coherent_direction","coherence",
+      "isMatch", "association", "difficulty", "dot_color_final","target_color_proportion"
+    )
+  ]
+  
+  # 将 correct 列转换为逻辑型
+  behavior_data$correct <- as.logical(behavior_data$correct)
+  # 然后再转换为 0 和 1
+  behavior_data$correct <- as.integer(behavior_data$correct)
+  # 将难度转换为因子型
+  behavior_data$difficulty <- as.factor(behavior_data$difficulty)
+  
+  # 分别提取正式试次
+  official_trials <- do.call(
+    rbind,
+    lapply(unique(behavior_data$part), function(part) {
+      part_data <- behavior_data[behavior_data$part == part, ]
+      if (part == "match_RDK") {
+        return(tail(part_data, 384)) # 匹配任务384次
+      } else if (part == "RDK") {
+        return(tail(part_data, 192)) # 辨别任务192次
+      } else {
+        return(NULL)
+      }
+    })
+  )
+
+  # 合并被试信息和行为数据
+  final_data <- cbind(participant_data, official_trials)
+  
+  # 将被试编号转换为因子型
+  final_data$subj_id <- as.factor(final_data$subj_id)
+
+  # 输出到新的CSV文件
+  output_file <- file.path(output_path, paste0(file_name, "_Clean.csv"))
+  write.csv(final_data, output_file, row.names = FALSE)
+}
+```
+
+# 读取清洗后的数据 pilot_expt_v4
+
+```{r}
+# 设置目标文件夹相对路径
+folder_path <- "../../2_Experiments/2_1_Pilot_Experiment/2_1_3_CleanData/pilot_expt_all"
+
+# 列出所有运动的csv文件
+file_list <- list.files(
+  path = folder_path,
+  pattern = "*pilot_expt_0421_.*\\.csv$", full.names = TRUE
+)
+
+# 创建一个空列表来存储数据
+df_list_1 <- list()
+
+# 逐个读取文件并存储
+for (file in file_list) {
+  file_name <- tools::file_path_sans_ext(basename(file)) # 获取文件名（不带扩展名）
+  df_list_1[[file_name]] <- read.csv(file) # 将数据存储在列表中
+}
+
+# 清除不需要的变量
+rm(output_path, participant_info, info_list, participant_data, split_data,
+   behavior_data, official_trials, final_data, output_file, file, file_list,
+   file_name, folder_path, info, key, key_value, value)
+```
+
+---
+## 分析思路
+1. 分 motion 和 color，random（3+3） 和 block（2+2）
+2. 查看数据分布
+3. 不同难度对应的正确率是否与预期一致
+4. 将不同难度根据关联类型拆分，计算均值
+---
+
+
+# 加载所需要的包
+
+```{r}
+library(ggplot2)
+library(dplyr)
+#library(ggokabeito)
+library(cowplot)
+library(bruceR)
+library(emmeans)
+library(ggstatsplot) 
+library(palmerpenguins)
+library(tidyverse)
+library(patchwork)
+```
+
+# 准备数据
+
+```{r}
+# 把 df_list_1 传送给 data
+data <- do.call(rbind, df_list_1)
+```
+
+## 定义函数用来计算平均正确率和反应时
+
+```{r}
+copmute_acc <- function(data){
+  data <- data %>%
+  filter(part %in% c("match_RDK","RDK")) %>%
+    group_by(subj_id, part, difficulty) %>%  #按被试与难度和关联类型分组
+    summarise(
+      avg_rt = mean(rt, na.rm = TRUE),#每个被试所有trial的平均反应时
+      max_rt = max(rt, na.rm = TRUE),#每个被试所有trial的最大反应时
+      min_rt = min(rt, na.rm = TRUE),#每个被试所有trial的最小反应时
+      sd_rt = sd(rt, na.rm = TRUE), #每个被试所有trial的反应时的方差
+      all_count = n(),#每个被试在每个条件的总trial数量
+      row_count = sum(rt >= 200 & rt <= 3000, na.rm = TRUE), #舍弃按键太快和按键太慢的反应时
+      correct_count = sum(correct == 1 & rt >= 200 & rt <= 3000, na.rm = TRUE),
+      acc = correct_count /all_count, #计算每个被试在每个条件的正确率= 正确/总数
+      .groups = "drop")
+   
+    
+    # 返回处理后的数据
+    return(data)
+}
+```
+
+## random_motion 条件的数据
+
+```{r}
+
+# Motion
+# data <- data %>%
+# filter(Participant_ID %in% c("Exp1A_3", "Exp1A_4", "Exp1A_5"))
+
+data1 <- data %>%
+  filter(
+    subj_id %in% c( seq(1, 20)),
+    rt >= 200 & rt <= 3000)#筛出反应时在200~3000)
+
+data_motion <- copmute_acc(data1)
+
+# data_motion_onlyDiff <- copmute_acc_onlyDiff(data1)
+
+# 将被试编号转换为因子型
+data_motion$subj_id <- as.factor(data_motion$subj_id)
+```
+
+# 准备 random_color 条件的数据
+
+```{r}
+# color
+
+data2 <- data %>%
+  filter(
+    subj_id %in% c( seq(21, 40)),
+    rt>=200 & rt <= 3000)#筛出反应时在200~3000)
+
+data_color <- copmute_acc(data2)
+
+# data_color_onlyDiff <- copmute_acc_onlyDiff(data2)
+
+# 将被试编号转换为因子型
+data_color$subj_id <- as.factor(data_color$subj_id)
+```
+
+
+# 准备 motion + color 的数据
+
+```{r}
+data_all <- data %>%
+  filter(
+    subj_id %in% c( seq(1, 40)),
+    rt >= 200 & rt <= 3000)#筛出反应时在200~3000)
+
+data_rb_all <- copmute_acc(data_all)
+
+# 将被试编号转换为因子型
+data_rb_all$subj_id <- as.factor(data_rb_all$subj_id)
+#data_all$betweenVari <- ifelse(data_all$Participant_ID < 11, "motion", "color")
+```
+
+## 查看数据分布
+
+```{r}
+# 导入所需要的包
+library(ggpubr)
+```
+
+```{r}
+
+# 直接用包绘图
+p1 <- ggscatterhist(
+  data_rb_all, x = "avg_rt", y = "acc", color = "subj_id", size = 2, alpha = 0.7,
+  margin.params = list(fill = "subj_id", color = "black", size = 0.2),
+  # margin.plot =  "histogram",
+  legend = "top",
+  ggtheme = theme_pubr()
+) 
+
+# 使用ylim函数设置纵坐标范围
+p1 <- p1 + ylim(0.5, 1)
+
+print(p1)
+```
+
+# 雨云图 + 方差分析
+## matching task
+
+```{r}
+colors <- c('#1C9A35','#1B4E8C','#BB4D0E','#EDB85D','#E9F7B8FF','#6595A3','#E7713B','#550307FF','#0C1707FF', '#0C1737FF', '#421','#E0C88D', '#E7718B', '#EDB79D','#14BE8C','#BF7D0E')
+
+matching_task_analysis <- function(data){
+  
+  # 获取数据名
+  data_name <- deparse(substitute(data))
+  # 从数据名中区分不同的组别
+  split_result <- strsplit(data_name, "_")[[1]]
+  group <- split_result[2]
+  group <- paste(group, collapse = "_")
+  
+  # 计算所需要的画图数据1 (此为长数据)
+  data <- data %>% #选择正式实验的数据
+    filter(part == "match_RDK") # %>%
+  
+  # 将难度转换为因子型
+  data$difficulty <- as.factor(data$difficulty)
+
+  # ACC plot (match condition)
+  acc_plot <- ggplot(
+    data,
+    aes(x = difficulty, y = acc, fill = difficulty, colour = difficulty)) +
+    geom_flat_violin(
+      position = position_nudge(x = .2, y = 0), adjust = 1.2, trim = FALSE, alpha = 0.5) +
+    geom_jitter(aes(color= subj_id), width = 0.15) +
+    # geom_point(position = position_jitter(width = .15), size = .25, alpha = 0.5) +
+    geom_boxplot(
+      aes(x = difficulty, y = acc), outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+    ylab("ACC") + xlab('difficulty') + coord_flip() +
+    theme_cowplot() + guides(fill = "none", colour = "none") +
+    scale_colour_manual(values = colors) + #palette = "Dark2"
+    scale_fill_manual(values = colors) +  #palette = "Dark2"
+    scale_y_continuous(
+    breaks = seq(0, 1, by = 0.1)) +  # 指定刻度间距，这里是每隔0.1显示一个刻度
+    ggtitle(group) # +
+    # theme(plot.title = element_text(hjust = -0.4 , vjust = 2 ))
+
+ # RT plot (match condition)
+  rt_plot <- ggplot(
+    data,
+    aes(x = difficulty, y = avg_rt, fill = difficulty, colour = difficulty)) +
+    geom_flat_violin(
+      position = position_nudge(x = .2, y = 0), adjust = 1.2, trim = FALSE, alpha = 0.5) +
+    geom_jitter(aes(color= subj_id), 
+      width = 0.1) +
+    # geom_point(position = position_jitter(width = .15), size = .25, alpha = 0.5) +
+    geom_boxplot(
+      aes(x = difficulty, y = avg_rt), outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+    ylab("RT (ms)") + xlab(' ') + coord_flip() +
+    theme_cowplot() + 
+    guides(fill = "none", colour = "none") +
+    scale_colour_manual(values = colors) + #palette = "Dark2"
+    scale_fill_manual(values = colors) #palette = "Dark2"
+    # ggtitle("Figure b: RT of Matching Task")
+
+  
+  plot_title <- paste0("match tack")
+  combined_plot <- acc_plot + rt_plot +
+    plot_annotation(title = plot_title,
+                    theme = theme(plot.title = element_text(size = 30, hjust = 0.5))) 
+  
+  print(combined_plot)
+  
+  
+
+}
+
+matching_task_analysis(data_motion)
+matching_task_analysis(data_color)
+# matching_task_analysis(data_color_onlyDiff)
+# matching_task_analysis(data_block_color1)
+```
+
+
+## RDK task
+
+```{r}
+rdk_task_analysis <- function(data){
+  
+  # 获取数据名
+  data_name <- deparse(substitute(data))
+  # 从数据名中区分不同的组别
+  split_result <- strsplit(data_name, "_")[[1]]
+  group <- split_result[2]
+  group <- paste(group, collapse = "_")
+  
+  target_folder_path <- "../3_3_pilot_expt_v4/output"
+  
+  # 筛选出相应的任务
+  rdk_task_data <- data %>%
+    filter(part == "RDK")
+
+  # 将难度转换为因子型
+  rdk_task_data$difficulty <- as.factor(rdk_task_data$difficulty)
+  rdk_task_data$subj_id <- as.factor(rdk_task_data$subj_id)
+  
+  # ACC plot (difficulty)
+  acc_plot <- ggplot(
+    rdk_task_data,
+    aes(x = difficulty, y = acc, fill = difficulty , colour = difficulty
+        )) +
+    geom_flat_violin(
+      position = position_nudge(x = .2, y = 0), adjust = 1.2, trim = FALSE, alpha = 0.5) +
+    geom_jitter(aes(color= subj_id), 
+      width = 0.15) +
+    # geom_point(position = position_jitter(width = .15), size = .25, alpha = 0.5) +
+    geom_boxplot(aes(x = difficulty, y = acc), outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+    ylab('ACC') + xlab('difficulty') + coord_flip() +
+    theme_cowplot() + guides(fill = "none", colour = "none") +
+    scale_colour_manual(values = colors) + #palette = "Dark2"
+    scale_fill_manual(values = colors) + #palette = "Dark2"
+    scale_y_continuous(
+    breaks = seq(0, 1, by = 0.1)  # 指定刻度间距，这里是每隔0.1显示一个刻度
+  ) +
+    ggtitle(group)
+
+ # RT plot (difficulty)
+rt_plot <- ggplot(
+    rdk_task_data,
+    aes(x = difficulty, y = avg_rt, fill = difficulty, colour = difficulty)) +
+    geom_flat_violin(
+      position = position_nudge(x = .2, y = 0), adjust = 1.2, trim = FALSE, alpha = 0.5) +
+    geom_jitter(aes(color = subj_id), width = 0.15) +
+    # geom_point(position = position_jitter(width = .15), size = .25, alpha = 0.5) +
+    geom_boxplot(
+      aes(
+        x = difficulty, y = avg_rt), outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+    ylab("RT (ms)") + xlab(' ') + coord_flip() +
+    theme_cowplot() + guides(fill = "none", colour = "none") +
+    scale_colour_manual(values = colors) + #palette = "Dark2"
+    scale_fill_manual(values = colors) #palette = "Dark2"
+    # ggtitle("Figure b: RT of Matching Task")
+
+  # 合并图形
+  plot_title <- paste0("RDK task")
+  combined_plot <- acc_plot + rt_plot +
+    plot_annotation(title = plot_title,
+                    theme = theme(plot.title = element_text(size = 30, hjust = 0.5))) 
+  
+  print(combined_plot)
+
+}
+```
+
+```{r}
+# 调用函数
+rdk_task_analysis(data_motion)
+rdk_task_analysis(data_color)
+# rdk_task_analysis(data_color_onlyDiff)
+# rdk_task_analysis(data_block_color1)
+# rdk_task_analysis(data_rb_all)
+```
+
+# 把自我关联和他人关联分开
+
+```{r}
+colors <- c("lightblue", "orange", "grey", "green","purple", "black", "brown")
+
+rdk_task_analysis2 <- function(data){
+  
+  # 获取数据名
+  data_name <- deparse(substitute(data))
+  # 从数据名中区分不同的组别
+  split_result <- strsplit(data_name, "_")[[1]]
+  group <- split_result[2]
+  group <- paste(group, collapse = "_")
+  
+  target_folder_path <- "../3_3_pilot_expt_v4/output"
+  
+  task_data[rdk_task_data$acc >= lower_bound_motion & rdk_task_data$acc <= upper_bound_motion, ]
+  
+  # 加一列新的变量
+  rdk_task_data <- data %>%
+    filter(part == "RDK")
+  
+  # 把不同的条件重新排一下序
+  # matching_task_data$conditions <- factor(matching_task_data$conditions,
+                                 # levels=c("selfEasy","otherEasy","selfHard","otherHard"))
+
+  # 将被试编号转换为因子型
+  rdk_task_data$difficulty <- as.factor(rdk_task_data$difficulty)
+  
+  # ACC plot (difficulty)
+  acc_plot <- ggplot(
+    rdk_task_data,
+    aes(x = difficulty, y = acc, fill = association , colour = association
+        )) +
+    geom_flat_violin(
+      position = position_nudge(x = .2, y = 0), adjust = 1.2, trim = FALSE, alpha = 0.5) +
+    geom_jitter(# aes(color= subj_id), 
+      width = 0.15) +
+    # geom_point(position = position_jitter(width = .15), size = .25, alpha = 0.5) +
+    geom_boxplot(aes(x = difficulty, y = acc), outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+    ylab('ACC') + xlab('difficulty') + coord_flip() +
+    theme_cowplot() + guides(fill = "none", colour = "none") +
+    scale_colour_manual(values = colors) + #palette = "Dark2"
+    scale_fill_manual(values = colors) + #palette = "Dark2"
+    scale_y_continuous(
+    breaks = seq(0, 1, by = 0.1)  # 指定刻度间距，这里是每隔0.1显示一个刻度
+  ) +
+    ggtitle(group)
+
+ # RT plot (difficulty)
+  rt_plot <- ggplot(
+    rdk_task_data,
+    aes(x = difficulty, y = avg_rt, fill = association, colour = association)) +
+    geom_flat_violin(
+      position = position_nudge(x = .2, y = 0), adjust = 1.2, trim = FALSE, alpha = 0.5) +
+    geom_jitter(# aes(color = subj_id), 
+      width = 0.15) +
+    # geom_point(position = position_jitter(width = .15), size = .25, alpha = 0.5) +
+    geom_boxplot(
+      aes(
+        x = difficulty, y = avg_rt), outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+    ylab("RT (ms)") + xlab(' ') + coord_flip() +
+    theme_cowplot() + 
+    # guides(fill = "none", colour = "none") +
+    scale_colour_manual(values = colors) + #palette = "Dark2"
+    scale_fill_manual(values = colors) #palette = "Dark2"
+    # ggtitle("Figure b: RT of Matching Task")
+
+  # 合并图形
+  plot_title <- paste0("RDK task")
+  combined_plot <- acc_plot + rt_plot +
+    plot_annotation(title = plot_title,
+                    theme = theme(plot.title = element_text(size = 30, hjust = 0.5))) 
+  
+  print(combined_plot)
+
+}
+```
+
+```{r}
+# 调用函数
+rdk_task_analysis2(data_motion)
+
+rdk_task_analysis2(data_color)
+# rdk_task_analysis(data_rb_all)
+```
+
+
+# 信号检测论分析
+## matching task
+
+```{r 正确率和dprime}
+
+analysis_dprime_matching <- function(data) {
+  
+  # 获取数据名
+  data_name <- deparse(substitute(data))
+  # 从数据名中区分不同的组别
+  split_result <- strsplit(data_name, "_")[[1]]
+  group <- split_result[c(2, 3)]
+  group <- paste(group, collapse = "_")
+  
+  # 设置保存文件的路径
+  target_folder_path <- "../3_3_pilot_expt_v4/output"
+  
+  # 将被试编号转换为因子型
+  data$difficulty <- as.factor(data$difficulty)
+   
+  sdt <- data %>% #选择正式实验的数据
+  filter(part == "match_RDK") %>%
+  group_by(subj_id, association, difficulty) %>%  #按被试与条件分组
+  dplyr::mutate(
+    type = dplyr::case_when(
+      (response == "f" & isMatch == "match") ~ "hit",
+      (response == "j" & isMatch == "mismatch") ~ "cr",
+      (response == "j" & isMatch == "match") ~ "miss",
+      (response == "f" & isMatch == "mismatch") ~ "fa")) %>%
+     summarize(
+       hit = sum(type == "hit"),
+       miss = sum(type == "miss"),
+       fa = sum(type == "fa"),
+       cr = sum(type == "cr"),
+       .groups = "drop")
+  sdt <- sdt %>%
+     #replace_na(list(hit = 0, miss = 0, cr = 0, fa = 0)) %>%
+     #mutate(zhr = qnorm(hit / (hit+miss)),
+            #zfa = qnorm(fa / (fa+cr)),
+            #dprime = zhr-zfa,
+            #crit = -zfa)
+    dplyr::mutate(hitR = hit/(hit + miss),  # hit rate
+                  faR  = fa/(fa+cr)) %>%    # fa rate
+    replace_na(list(hitR = 0, faR = 0)) %>%
+                  # if hit rate is 1, standardize it
+    dplyr::mutate(hitR = ifelse(hitR == 1, 1 - 1/(2*(hit + miss)), hitR), 
+                  # if FA rate is 0, standardize it
+                  faR  = ifelse(faR == 0, 1/(2*(hit + miss)), faR)) %>% 
+    dplyr::mutate(dprime = qnorm(hitR) - qnorm(faR),
+                  zfa = qnorm(fa / (fa+cr)),
+                  crit = -zfa
+                  ) %>%
+    mutate( dprime = round(dprime, 2),
+           crit = round(crit, 2)
+           )
+
+    # 把 sdt 设为环境变量
+    assign("sdt_match_task", sdt, envir = .GlobalEnv)
+    
+    # 这里，我原来是想把 sdt 数据加入原数据中
+    #sdt_data1 <- data %>%
+      #right_join(sdt, by = "Participant_ID") %>%
+      #group_by(Participant_ID, association, dprime) %>%
+      #summarize(count = n()) 
+    #print(sdt_data1)
+    
+    d_plot1 <- sdt %>%
+    ggplot(., aes(x = difficulty, y = dprime, fill = association, colour = association)) +
+    geom_flat_violin(position = position_nudge(x = .2, y = 0), adjust = 2, trim = FALSE, alpha = 0.5) +
+    geom_jitter(aes(color = association), width = 0.1) +
+    #geom_point(position = position_jitter(width = .15), size = .25, alpha = 0.5) +
+    geom_boxplot(aes(x = difficulty, y = dprime), outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+    ylab('dprime') +  coord_flip() +
+    theme_cowplot() + # guides(fill = "none", colour = "none") +
+    scale_colour_manual(values = colors) + # palette = "Dark2"
+    scale_fill_manual(values = colors) +# palette = "Dark2"
+    ggtitle(group)
+    # guides(fill = guide_legend(title = "参照条件"), colour = guide_legend(title = "参照条件"))
+    
+    print(d_plot1)
+    
+    #sdt_data2 <- data %>%
+      #filter(part == "match_RDK") %>%
+      #right_join(sdt, by = "Participant_ID") %>%
+      #group_by(Participant_ID, association, match, dprime) %>%
+      #summarize(count = n()) 
+    
+    #print(sdt_data2)
+    
+    #** d' 的方差分析**#
+
+    dprime_file_name <- paste0("dprime_", group, ".doc")
+    matching_task_dprime <- sdt %>%
+       MANOVA(., dv = "dprime", subID="subj_id",
+           within = c("difficulty","association"),
+           sph.correction="GG",
+           file = file.path(target_folder_path, dprime_file_name)
+           )  #%>%
+      #emmeans("match", by = "association")
+}
+
+# 调用函数
+analysis_dprime_matching(data_random_motion)
+analysis_dprime_matching(data_random_color)
+analysis_dprime_matching(data_block_motion)
+analysis_dprime_matching(data_block_color)
+analysis_dprime_matching(data_all)
+```
+
+## RDK task
+
+### 先定义函数
+
+```{r dprime}
+
+analysis_dprime_rdk <- function(data) {
+  
+  colors <- c("lightblue", "orange")
+  
+  # 设置保存文件的路径
+  target_folder_path <- "../3_3_pilot_expt_v4/output"
+  
+  # 获取数据名
+  data_name <- deparse(substitute(data))
+  # 从数据名中区分不同的组别
+  split_result <- strsplit(data_name, "_")[[1]]
+  group <- split_result[c(3, 4)]
+  group <- paste(group, collapse = "_")
+  
+  # 将被试编号转换为因子型
+  data$difficulty <- as.factor(data$difficulty)
+
+  d_plot <- data %>%
+  ggplot(., aes(x = difficulty, y = dprime, fill = association, colour = association)) +
+  geom_flat_violin(position = position_nudge(x = .2, y = 0), adjust = 2, trim = FALSE, alpha = 0.5) +
+  geom_jitter(aes(color = association), width = 0.15) +
+  #geom_point(position = position_jitter(width = .15), size = .25, alpha = 0.5) +
+  geom_boxplot(aes(x = difficulty, y = dprime), outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+  ylab('dprime') + xlab(" ") + coord_flip() +
+  theme_cowplot() + #guides(fill = "none", colour = "none") +
+  scale_colour_manual(values = colors) + # palette = "Dark2"
+  scale_fill_manual(values = colors) + # palette = "Dark2"
+  ggtitle(group) #+
+  #guides(fill = guide_legend(title = "参照条件"), colour = guide_legend(title = "参照条件"))
+  
+  print(d_plot)
+  
+  # c_plot <- data %>%
+  # ggplot(., aes(x = difficulty, y = crit, fill = association, colour = association)) +
+  # geom_flat_violin(position = position_nudge(x = .2, y = 0), trim = FALSE, alpha = 0.5) +
+  # geom_jitter(aes(color = association), width = 0.15) +
+  # geom_point(position = position_jitter(width = .15), size = .25, alpha = 0.5) +
+  # geom_boxplot(aes(x = difficulty, y = crit), outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+  # ylab('crit.') + xlab(" ") + coord_flip() +
+  # theme_cowplot() + #guides(fill = "none", colour = "none") +
+  # scale_colour_manual(values = colors) + # palette = "Dark2"
+  # scale_fill_manual(values = colors) # palette = "Dark2"
+  # ggtitle("Figure 2a: ACC of ALT2_moral")+
+  # guides(fill = guide_legend(title = "参照条件"), colour = guide_legend(title = "参照条件"))
+  
+  # combined_plot <- d_plot + c_plot +
+  # plot_annotation(title = "color group", theme = theme(plot.title = element_text(size = 30, hjust = 0.5))) 
+
+  # print(combined_plot)
+  
+  #sdt_data2 <- data %>%
+    #filter(part == "match_RDK") %>%
+    #right_join(sdt, by = "Participant_ID") %>%
+    #group_by(Participant_ID, association, match, dprime) %>%
+    #summarize(count = n()) 
+  
+  #print(sdt_data2)
+
+  #** d' 的方差分析**#
+  # 获取 data 和 task 的表达式文本（通常是其名称等信息）
+  # data_name <- deparse(substitute(data))
+
+  dprime_file_name <- paste0(group, ".doc")
+  rdk_dprime <- data %>%
+     MANOVA(., dv = c( "dprime"), subID="subj_id",
+         within = c("difficulty","association"),
+         sph.correction="GG",
+         file = file.path(target_folder_path, dprime_file_name)
+         )  #%>%
+    #emmeans("match", by = "association")
+}
+```
+
+# 分别计算运动组和颜色组的 d'
+
+```{r}
+
+compute_std_rdk_motion <- function(data) {
+  # 运动组
+  sdt_rdk_motion_even <- data %>% #选择正式实验的数据
+    filter(part == "RDK") %>%
+    filter(subj_id %% 2 == 0) %>% # 被试id为偶数，左运动代表自己
+    group_by(subj_id, difficulty, association) %>%  #按被试与条件分组
+    dplyr::mutate(
+      # 在这里，以左为信号右为噪声
+      type = dplyr::case_when(
+        (association == "self" & response == "arrowleft" & coherent_direction == 180) ~ "hit",
+        (association == "self" & response == "arrowright" & coherent_direction == 0) ~ "cr",
+        (association == "self" & response == "arrowright" & coherent_direction == 180) ~ "miss",
+        (association == "self" & response == "arrowleft" & coherent_direction == 0) ~ "fa",
+        (association == "other" & response == "arrowright" & coherent_direction == 0) ~ "hit",
+        (association == "other" & response == "arrowleft" & coherent_direction == 180) ~ "cr",
+        (association == "other" & response == "arrowleft" & coherent_direction == 0) ~ "miss",
+        (association == "other" & response == "arrowright" & coherent_direction == 180) ~ "fa")) %>%
+    summarize(
+      hit = sum(type == "hit"),
+      miss = sum(type == "miss"),
+      fa = sum(type == "fa"),
+      cr = sum(type == "cr"),
+      .groups = "drop")
+  
+  sdt_rdk_motion_even <- sdt_rdk_motion_even %>%
+    dplyr::mutate(hitR = hit/(hit + miss),  # hit rate
+                  faR  = fa/(fa+cr)) %>%    # fa rate
+    replace_na(list(hitR = 0, faR = 0)) %>%
+    # if hit rate is 1, standardize it
+    dplyr::mutate(hitR = ifelse(hitR == 1, 1 - 1/(2*(hit + miss)), hitR), 
+                  # if FA rate is 0, standardize it
+                  faR  = ifelse(faR == 0, 1/(2*(hit + miss)), faR)) %>% 
+    dplyr::mutate(dprime = qnorm(hitR) - qnorm(faR),
+                  zfa = qnorm(fa / (fa+cr)),
+                  crit = -zfa
+    ) %>%
+    mutate( dprime = round(dprime, 2),
+            crit = round(crit, 2)
+    )
+  
+  sdt_rdk_motion_odd <- data %>% #选择正式实验的数据
+    filter(part == "RDK") %>%
+    filter(subj_id %% 2 == 1) %>% # 被试id为奇数，右运动代表自己
+    group_by(subj_id, difficulty, association) %>%  #按被试与条件分组
+    dplyr::mutate(
+      # 在这里，把自我定义为信号，他人定义为噪声
+      type = dplyr::case_when(
+        (association == "self" & response == "arrowright" & coherent_direction == 0) ~ "hit",
+        (association == "self" & response == "arrowleft" & coherent_direction == 180) ~ "cr",
+        (association == "self" & response == "arrowleft" & coherent_direction == 0) ~ "miss",
+        (association == "self" & response == "arrowright" & coherent_direction == 180) ~ "fa",
+        (association == "other" & response == "arrowleft" & coherent_direction == 180) ~ "hit",
+        (association == "other" & response == "arrowright" & coherent_direction == 0) ~ "cr",
+        (association == "other" & response == "arrowright" & coherent_direction == 180) ~ "miss",
+        (association == "other" & response == "arrowleft" & coherent_direction == 0) ~ "fa")) %>%
+    summarize(
+      hit = sum(type == "hit"),
+      miss = sum(type == "miss"),
+      fa = sum(type == "fa"),
+      cr = sum(type == "cr"),
+      .groups = "drop")
+  
+  sdt_rdk_motion_odd <- sdt_rdk_motion_odd %>%
+    dplyr::mutate(hitR = hit/(hit + miss),  # hit rate
+                  faR  = fa/(fa+cr)) %>%    # fa rate
+    replace_na(list(hitR = 0, faR = 0)) %>%
+    # if hit rate is 1, standardize it
+    dplyr::mutate(hitR = ifelse(hitR == 1, 1 - 1/(2*(hit + miss)), hitR), 
+                  # if FA rate is 0, standardize it
+                  faR  = ifelse(faR == 0, 1/(2*(hit + miss)), faR)) %>% 
+    dplyr::mutate(dprime = qnorm(hitR) - qnorm(faR),
+                  zfa = qnorm(fa / (fa+cr)),
+                  crit = -zfa
+    ) %>%
+    mutate( dprime = round(dprime, 2),
+            crit = round(crit, 2)
+    )
+  
+  sdt_rdk_motion <- rbind(sdt_rdk_motion_odd, sdt_rdk_motion_even)
+  
+  return(sdt_rdk_motion)
+}
+
+# 颜色组
+# 由于不确定，颜色的还没改
+compute_std_rdk_color <- function(data) {
+  data <- data %>%
+    dplyr::mutate(
+    dot_color_final = dplyr::case_when(
+      dot_color_final == '["hsl(0, 50%, 50%)","hsl(225, 50%, 50%)"]' ~ "r",
+      dot_color_final == '["hsl(225, 50%, 50%)","hsl(0, 50%, 50%)"]' ~ "b"))
+  sdt_rdk_color_even <- data %>% #选择正式实验的数据
+    filter(part == "RDK") %>%
+    filter(subj_id %% 2 == 0) %>% # 被试id为偶数，red代表自己
+    group_by(subj_id, difficulty) %>%  #按被试与条件分组
+    dplyr::mutate(
+      # 在这里，把自我定义为信号，他人定义为噪声
+      type = dplyr::case_when(
+        (response == "d" & dot_color_final == "r") ~ "hit",
+        (response == "k" & dot_color_final == "b") ~ "cr",
+        (response == "k" & dot_color_final == "r") ~ "miss",
+        (response == "d" & dot_color_final == "b") ~ "fa")) %>%
+    summarize(
+      hit = sum(type == "hit"),
+      miss = sum(type == "miss"),
+      fa = sum(type == "fa"),
+      cr = sum(type == "cr"),
+      .groups = "drop")
+  
+  sdt_rdk_color_even <- sdt_rdk_color_even %>%
+    dplyr::mutate(hitR = hit/(hit + miss),  # hit rate
+                  faR  = fa/(fa+cr)) %>%    # fa rate
+    replace_na(list(hitR = 0, faR = 0)) %>%
+    # if hit rate is 1, standardize it
+    dplyr::mutate(hitR = ifelse(hitR == 1, 1 - 1/(2*(hit + miss)), hitR), 
+                  # if FA rate is 0, standardize it
+                  faR  = ifelse(faR == 0, 1/(2*(hit + miss)), faR)) %>% 
+    dplyr::mutate(dprime = qnorm(hitR) - qnorm(faR),
+                  zfa = qnorm(fa / (fa+cr)),
+                  crit = -zfa
+    ) %>%
+    mutate( dprime = round(dprime, 2),
+            crit = round(crit, 2)
+    )
+  
+  sdt_rdk_color_odd <- data %>% #选择正式实验的数据
+    filter(part == "RDK") %>%
+    filter(subj_id %% 2 == 1) %>% # 被试id为奇数，blue代表自己
+    group_by(subj_id, difficulty) %>%  #按被试与条件分组
+    dplyr::mutate(
+      # 在这里，把自我定义为信号，他人定义为噪声
+      type = dplyr::case_when(
+        (response == "k" & dot_color_final == "b") ~ "hit",
+        (response == "d" & dot_color_final == "r") ~ "cr",
+        (response == "d" & dot_color_final == "b") ~ "miss",
+        (response == "k" & dot_color_final == "r") ~ "fa")) %>%
+    summarize(
+      hit = sum(type == "hit"),
+      miss = sum(type == "miss"),
+      fa = sum(type == "fa"),
+      cr = sum(type == "cr"),
+      .groups = "drop")
+  
+  sdt_rdk_color_odd <- sdt_rdk_color_odd %>%
+    dplyr::mutate(hitR = hit/(hit + miss),  # hit rate
+                  faR  = fa/(fa+cr)) %>%    # fa rate
+    replace_na(list(hitR = 0, faR = 0)) %>%
+    # if hit rate is 1, standardize it
+    dplyr::mutate(hitR = ifelse(hitR == 1, 1 - 1/(2*(hit + miss)), hitR), 
+                  # if FA rate is 0, standardize it
+                  faR  = ifelse(faR == 0, 1/(2*(hit + miss)), faR)) %>% 
+    dplyr::mutate(dprime = qnorm(hitR) - qnorm(faR),
+                  zfa = qnorm(fa / (fa+cr)),
+                  crit = -zfa
+    ) %>%
+    mutate( dprime = round(dprime, 2),
+            crit = round(crit, 2)
+    )
+  
+  sdt_rdk_color <- rbind(sdt_rdk_color_odd, sdt_rdk_color_even)
+  
+  return(sdt_rdk_color)
+}
+```
+
+```{r}
+std_rdk_random_motion <- compute_std_rdk_motion(data_random_motion)
+std_rdk_block_motion <- compute_std_rdk_motion(data_block_motion)
+std_rdk_random_color <- compute_std_rdk_color(data_random_color)
+std_rdk_block_color <- compute_std_rdk_color(data_block_color)
+```
+
+# 调用之前的分析函数
+```{r}
+analysis_dprime_rdk(std_rdk_random_motion)
+analysis_dprime_rdk(std_rdk_block_motion)
+analysis_dprime_rdk(std_rdk_random_color)
+analysis_dprime_rdk(std_rdk_block_color)
+```
+
+---
+## 后面的代码还没改
+
+```{r}
+# 颜色组
+
+sdt_rdk_color <- data_color_secd %>% #选择颜色组的数据
+  filter(part == "RDK") %>%
+  group_by(Participant_ID, association) %>%  #按被试与条件分组
+  dplyr::mutate(
+    dot_color = dplyr::case_when(
+      dot_color_after == '["hsla(0, 50%, 50%, 70%)","hsla(225, 50%, 50%, 70%)"]' ~ "r",
+      dot_color_after == '["hsla(225, 50%, 50%, 70%)","hsla(0, 50%, 50%, 70%)"]' ~ "b")) %>%
+  dplyr::mutate(
+    # 在这里，把红色定义为信号，蓝色定义为噪声
+    type = dplyr::case_when(
+      (response == "d" & dot_color == "r") ~ "hit",
+      (response == "k" & dot_color == "b") ~ "cr",
+      (response == "k" & dot_color == "r") ~ "miss",
+      (response == "d" & dot_color == "b") ~ "fa")) %>%
+  summarize(
+    hit = sum(type == "hit"),
+    miss = sum(type == "miss"),
+    fa = sum(type == "fa"),
+    cr = sum(type == "cr"),
+    .groups = "drop")
+
+sdt_rdk_color <- sdt_rdk_color %>%
+  #replace_na(list(hit = 0, miss = 0, cr = 0, fa = 0)) %>%
+  #mutate(zhr = qnorm(hit / (hit+miss)),
+  #zfa = qnorm(fa / (fa+cr)),
+  #dprime = zhr-zfa,
+  #crit = -zfa)
+  dplyr::mutate(hitR = hit/(hit + miss),  # hit rate
+                faR  = fa/(fa+cr)) %>%    # fa rate
+  replace_na(list(hitR = 0, faR = 0)) %>%
+  # if hit rate is 1, standardize it
+  dplyr::mutate(hitR = ifelse(hitR == 1, 1 - 1/(2*(hit + miss)), hitR), 
+                # if FA rate is 0, standardize it
+                faR  = ifelse(faR == 0, 1/(2*(hit + miss)), faR)) %>% 
+  dplyr::mutate(dprime = qnorm(hitR) - qnorm(faR),
+                zfa = qnorm(fa / (fa+cr)),
+                crit = -zfa
+  ) %>%
+  mutate( dprime = round(dprime, 2),
+          crit = round(crit, 2)
+  )
+
+# 调用函数
+analysis_dprime_rdk(sdt_rdk_motion)
+#analysis_dprime_rdk(sdt_rdk_color)
+```
+
+## 比较在 rdk task 中 motion 和 color 的 d' 是否有差异
+```{r dprime 比较}
+
+# 合并之前的数据
+sdt_rdk_combined = rbind(sdt_rdk_color, sdt_rdk_motion)
+
+# 根据 id 加上一列新变量，区分 motion 和 color
+sdt_rdk_combined$group <- ifelse(sdt_rdk_combined$Participant_ID < 11, "motion", "color")
+    
+    #**d' 的方差分析**#
+    
+    # 设置保存文件的路径
+  target_folder_path <- "../3_1_Expt_1a/output"
+  
+    dprime_vs <- sdt_rdk_combined %>%
+      MANOVA(., dv = "dprime", subID="Participant_ID",
+           within = c("difficulty"),
+           between = c("group"),
+           sph.correction="GG",
+           file = file.path(target_folder_path, "dprime_motino_vs_color_rdk")
+           )  #%>%
+      # emmeans("association", by = "betweenVari") # 后面去查一查这个
+```

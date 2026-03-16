@@ -1,0 +1,495 @@
+---
+title: "采用贝叶斯序列分析确定样本量"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+documentclass: ctexart
+output:
+  html_document:
+    fig_caption: true
+    number_sections: true
+    toc: true
+  pdf_document:
+    toc: true
+geometry: left=2cm,right=2cm,top=2cm,bottom=2cm
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+-   停止规则：
+    -   贝叶斯因子阈值确定为10
+    -   最小样本量40，最大样本量70
+-   研究假设
+    -   匹配任务
+        -   关联类型的主效应
+        -   关联类型与难度的交互作用
+    -   辨别任务
+        -   关联类型的主效应
+        -   关联类型与难度的交互作用
+-   **研究的关键假设：**在任意一个知觉辨别的难度下，当知觉辨别任务不直接与自我相关时，是否仍然存在自我优势效应？这一关键研究假设是本研究决定何时停止数据收集的关键效应量
+-   在此处只检验是否存在交互作用
+
+
+```{r}
+rm(list = ls())
+```
+
+下载和安装需要的R语言程序包
+
+```{r message=FALSE, warning=FALSE}
+# install.packages(c("tidyverse", "BayesFactor", "here"))
+library(BayesFactor)#计算t检验和方差分析的贝叶斯因子
+packageVersion("BayesFactor")
+library(tidyverse)
+library(showtext)#解决中文字体无法显示问题
+library(latex2exp)#latex语法
+# font_add("song", 
+         # "/System/Library/Fonts/Supplemental/Songti.ttc")
+##从系统增加宋体字
+showtext_auto()
+library(here)
+here()
+options(scipen = 9)#将科学计数法改为在万后9位
+set.seed(1234)
+```
+
+定义函数
+
+```{r}
+# 定义函数，用来进行贝叶斯重复测量方差分析
+bf_aov <- function(data, dv='acc', v='association') {
+  set.seed(1234)
+  
+  subj_num <- base::unique(data$subj_idx) # 每个被试的编号
+  n <- base::length(unique(data$subj_idx)) # 获取被试数量
+  
+  bfs_int <- base::rep(1, length(subj_num))
+  bfs_a <- base::rep(1, length(subj_num))
+  bfs_diff <- base::rep(1, length(subj_num))
+  
+  for (i in base::seq_along(subj_num)) {
+    if (i == 1) {
+      next # 由于一个被试不能正确计算贝叶斯因子，所以当i等于1时，跳过
+    }
+    # 使用dv参数构建公式, 基础公式包含随机斜率（为了与JASP一致）
+    # dv_formula <- stats::as.formula(base::paste(dv, "~ 1 + subj_idx + difficulty:subj_idx +", v, ":subj_idx"))
+    dv_formula <- stats::as.formula(base::paste(dv, "~ 1 + subj_idx + difficulty:subj_idx + association:subj_idx"))
+    
+    # 零模型
+    null_model <- BayesFactor::lmBF(
+      dv_formula,
+      data = data,
+      whichRandom = "subj_idx",
+      rscaleFixed = 0.5,
+      rscaleRandom = 1,
+      iteration = 10000
+    )
+    
+    # 仅包含 difficulty 主效应
+    model_difficulty <- BayesFactor::lmBF(
+      update(dv_formula, paste(". ~ . + difficulty")),
+      data = data,
+      whichRandom = "subj_idx",
+      rscaleFixed = 0.5,
+      rscaleRandom = 1,
+      iteration = 10000
+    )
+    
+    # 仅包含 association 主效应
+    model_association <- BayesFactor::lmBF(
+      update(dv_formula, paste(". ~ . +", v)),
+      data = data,
+      whichRandom = "subj_idx",
+      rscaleFixed = 0.5,
+      rscaleRandom = 1,
+      iteration = 10000
+    )
+    
+    # 包含两个主效应
+    model_main <- BayesFactor::lmBF(
+      update(dv_formula, paste(". ~ . + difficulty +", v)),
+      data = data,
+      whichRandom = "subj_idx",
+      rscaleFixed = 0.5,
+      rscaleRandom = 1,
+      iteration = 10000
+    )
+    
+    # 包含主效应和交互作用
+    model_int <- BayesFactor::lmBF(
+      update(dv_formula, paste(". ~ . + difficulty *", v)),
+      data = data,
+      whichRandom = "subj_idx",
+      rscaleFixed = 0.5,
+      rscaleRandom = 1,
+      iteration = 10000
+    )
+    
+    print(model_main)
+    print(model_association)
+    print(model_difficulty)
+    
+    bfs_int[i] <- model_int / model_main
+    bfs_a[i] <- model_main / model_difficulty
+    bfs_diff[i] <- model_main / model_association
+  }
+  
+  aov_output <- tibble::tibble(
+    bfs_a = bfs_a,
+    bfs_diff = bfs_diff,
+    bfs_int = bfs_int
+  )
+  
+  print(aov_output)
+  return(aov_output)
+}
+```
+
+```{r}
+bf_aov <- function(data, dv) {
+  set.seed(1234)
+  
+  # 仅保留被试数量统计（用于确认当前数据的被试数）
+  subj_num <- base::unique(data$subj_idx) # 每个被试的编号
+  n <- base::length(subj_num) # 获取被试数量（n=当前数据的总被试数）
+  cat(paste0("=== 正在计算 ", n, " 个被试的贝叶斯因子 ===\n"))
+  
+  # 关键：用dv参数构建公式（修复原代码写死acc的问题）
+  dv_formula <- stats::as.formula(
+    base::paste(dv, "~ 1 + subj_idx + difficulty:subj_idx + association:subj_idx")
+  )
+  
+  # 零模型（完全保留你的公式）
+  null_model <- BayesFactor::lmBF(
+    dv_formula,
+    data = data,
+    whichRandom = "subj_idx",
+    rscaleFixed = 0.5,
+    rscaleRandom = 1,
+    iteration = 10000
+  )
+  
+  # 仅包含 difficulty 主效应（完全保留你的公式）
+  model_difficulty <- BayesFactor::lmBF(
+    update(dv_formula, paste(". ~ . + difficulty")),
+    data = data,
+    whichRandom = "subj_idx",
+    rscaleFixed = 0.5,
+    rscaleRandom = 1,
+    iteration = 10000
+  )
+  
+  # 仅包含 association 主效应（完全保留你的公式）
+  model_association <- BayesFactor::lmBF(
+    update(dv_formula, paste(". ~ . + association")),
+    data = data,
+    whichRandom = "subj_idx",
+    rscaleFixed = 0.5,
+    rscaleRandom = 1,
+    iteration = 10000
+  )
+  
+  # 包含两个主效应（完全保留你的公式）
+  model_main <- BayesFactor::lmBF(
+    update(dv_formula, paste(". ~ . + difficulty + association")),
+    data = data,
+    whichRandom = "subj_idx",
+    rscaleFixed = 0.5,
+    rscaleRandom = 1,
+    iteration = 10000
+  )
+  
+  # 包含主效应和交互作用（完全保留你的公式）
+  model_int <- BayesFactor::lmBF(
+    update(dv_formula, paste(". ~ . + difficulty * association")),
+    data = data,
+    whichRandom = "subj_idx",
+    rscaleFixed = 0.5,
+    rscaleRandom = 1,
+    iteration = 10000
+  )
+  
+  # 打印模型信息（保留你的原打印逻辑）
+  print(model_main)
+  print(model_association)
+  print(model_difficulty)
+  
+  # 核心修正：用 extractBF() 提取BF数值（替代 as.numeric()）
+  bfs_int <- BayesFactor::extractBF(model_int / model_main)$bf  # 交互效应BF
+  bfs_a <- BayesFactor::extractBF(model_main / model_difficulty)$bf  # association主效应BF
+  bfs_diff <- BayesFactor::extractBF(model_main / model_association)$bf  # difficulty主效应BF
+  
+  # 整理输出结果（仅1行，无重复）
+  aov_output <- tibble::tibble(
+    被试数量_n = n,
+    association主效应BF = round(bfs_a, 3),  # 保留3位小数，更整洁
+    difficulty主效应BF = round(bfs_diff, 3),
+    交互效应BF = round(bfs_int, 3)
+  )
+  
+  print(aov_output)
+  return(aov_output)
+}
+```
+
+## 读取清洗后的数据
+
+```{r}
+# 文件路径和文件名根据实际情况调整
+# 设置目标文件夹相对路径
+folder_path <- "../3_Data/exp1a/CleanData"
+
+# 列出目标文件
+file_list <- list.files(
+  path = folder_path,
+  pattern = "*df_.*\\.csv$", full.names = TRUE
+) # 这里根据实际命名进行修改
+
+
+# 初始化一个列表用于存储数据框
+df_list <- list()
+for (i in seq_along(file_list)) {
+  # 去掉文件后缀，作为数据框在列表中的名称
+  df_name <- tools::file_path_sans_ext(file_list[i])
+  df_list[[df_name]] <- read.csv(file_list[i])
+}
+
+# 将列表中的数据框单独赋值到全局环境（可选）
+# list2env(df_list, envir = .GlobalEnv)
+
+# 定义需要转换的变量名
+factor_vars <- c("subj_idx", "association", "difficulty")
+
+# 提取数据框
+df_color_diff_match <- df_list[[1]] 
+df_color_diff_rdk <- df_list[[2]] 
+df_color_match <- df_list[[3]] %>% 
+  dplyr::mutate(dplyr::across(all_of(factor_vars), as.factor))
+df_color_rdk <- df_list[[4]] %>% 
+  dplyr::mutate(dplyr::across(all_of(factor_vars), as.factor))
+
+df_motion_diff_match <- df_list[[5]]
+df_motion_diff_rdk <- df_list[[6]]
+df_motion_match <- df_list[[7]] %>% 
+  dplyr::mutate(dplyr::across(all_of(factor_vars), as.factor))
+df_motion_rdk <- df_list[[8]] %>% 
+  dplyr::mutate(dplyr::across(all_of(factor_vars), as.factor))
+```
+## 有随机斜率与无随机斜率的模型比较
+
+```{r}
+# 以全模型为例
+
+library(brms)
+library(loo)
+
+# 1. 无随机斜率模型（随机截距）
+model_noslope_brms <- brm(
+  acc ~ association * difficulty + (1 | subj_idx),  # 随机截距
+  data = df_motion_match,
+  # family = bernoulli(),  # 二分类因变量专用分布（必须！）
+  # prior = c(prior(normal(0, 0.5), class = b), prior(normal(0, 1), class = sd)),
+  iter = 2000, chains = 4, seed = 123,
+  save_pars = save_pars(all = TRUE)
+)
+
+# 2. 含随机斜率模型（截距+两个斜率随机）
+model_slope_brms <- brm(
+  acc ~ association * difficulty + (1 + difficulty + association | subj_idx),
+  data = df_motion_match,
+  # family = bernoulli(),
+  # prior = c(prior(normal(0, 0.5), class = b), prior(normal(0, 1), class = sd)),
+  iter = 2000, chains = 4, seed = 123,
+  save_pars = save_pars(all = TRUE)
+)
+
+# 获取所有指标
+loo_slope_fixed <- loo(model_slope_brms, moment_match = TRUE)  
+# 无随机斜率模型：之前已显示k值都好，无需修正，但为了比较一致，也可运行
+loo_noslope <- loo(model_noslope_brms, moment_match = TRUE)   
+
+# 2. 重新查看修正后的含斜率模型LOO诊断
+print(loo_noslope)
+print(loo_slope_fixed)
+
+
+# 模型比较
+loo_compare(loo_slope_fixed, loo_noslope)
+
+waic_compare <- waic(model_noslope_brms, model_slope_brms)  # 直接对比WAIC
+# 查看结果
+print(waic_compare)
+
+```
+
+## BF 值计算
+
+### 运动组
+
+#### 匹配任务
+
+
+##### ACC
+
+```{r}
+# bfs_association_mm_acc <- data_motion_match %>%
+#   dplyr::mutate(correct = ifelse(correct == "true", 1, 0),
+#                 dplyr::across(all_of(factor_vars), as.factor)) %>%
+#   bf_aov(., 'correct', 'association')
+
+# bfs_association_mm_acc <- df_motion_match %>%
+#         dplyr::filter(isMatch == 'match') %>%
+#   bf_aov(., 'acc')
+bfs_association_mm_acc <- bf_aov(df_motion_match, 'acc')
+
+bfs_association_mm_acc
+```
+
+**可视化**
+
+```{r}
+plot_bfs_association <- plot_aov(bfs_association_mm_acc, 'bfs_a', 'Association effect: motion match task(ACC)')
+plot_bfs_association
+
+plot_bfs_int <- plot_aov(bfs_association_mm_acc, 'bfs_int', 'Interaction: motion match task(ACC)')
+plot_bfs_int
+```
+
+##### RT
+
+```{r}
+# bfs_association_mm_rt <- bf_aov(df_motion_match, 'rt')
+# bfs_association_mm_rt <- df_motion_match %>%
+#         dplyr::filter(isMatch == 'match') %>%
+#   bf_aov(., 'rt')
+
+bfs_association_mm_rt <- bf_aov(df_motion_match, 'rt')
+
+bfs_association_mm_rt
+```
+
+**可视化**
+
+```{r}
+plot_bfs_association <- plot_aov(bfs_association_mm_rt, 'bfs_a', 'Association effect: motion match task(RT)')
+plot_bfs_association
+
+plot_bfs_int <- plot_aov(bfs_association_mm_rt, 'bfs_int', 'Interaction: motion match task(RT)')
+plot_bfs_int
+```
+
+
+#### 辨别任务
+
+##### ACC
+
+```{r}
+bfs_association_mr_acc <- bf_aov(df_motion_rdk, 'acc')
+
+bfs_association_mr_acc
+```
+
+**可视化**
+
+```{r}
+plot_bfs_association <- plot_aov(bfs_association_mr_acc, 'bfs_a', 'Association effect: motion rdk task(ACC)')
+plot_bfs_association
+
+plot_bfs_int <- plot_aov(bfs_association_mr_acc, 'bfs_int', 'Interaction: motion rdk task(ACC)')
+plot_bfs_int
+```
+
+##### RT
+
+```{r}
+bfs_association_mr_rt <- bf_aov(df_motion_rdk, 'rt')
+bfs_association_mr_rt
+```
+
+**可视化**
+
+```{r}
+plot_bfs_association <- plot_aov(bfs_association_mr_rt, 'bfs_a', 'Association effect: motion rdk task(RT)')
+plot_bfs_association
+
+plot_bfs_int <- plot_aov(bfs_association_mr_rt, 'bfs_int', 'Interaction: motion rdk task(RT)')
+plot_bfs_int
+```
+
+
+### 颜色组
+
+#### 匹配任务
+
+##### ACC
+
+```{r}
+bfs_association_cm_acc <- bf_aov(df_color_match, 'acc')
+bfs_association_cm_acc
+```
+
+**可视化**
+
+```{r}
+plot_bfs_association <- plot_aov(bfs_association_cm_acc, 'bfs_a', 'Association effect: color match task(ACC)')
+plot_bfs_association
+
+plot_bfs_int <- plot_aov(bfs_association_cm_acc, 'bfs_int', 'Interaction: color match task(ACC)')
+plot_bfs_int
+```
+
+###### RT
+
+```{r}
+bfs_association_cm_rt <- bf_aov(df_color_match, 'rt')
+bfs_association_cm_rt
+```
+
+**可视化**
+
+```{r}
+plot_bfs_association <- plot_aov(bfs_association_cm_rt, 'bfs_a', 'Association effect: color match trial(RT)')
+plot_bfs_association
+
+plot_bfs_int <- plot_aov(bfs_association_cm_rt, 'bfs_int', 'Interaction: color match trial(RT)')
+plot_bfs_int
+```
+
+
+#### 辨别任务
+
+##### ACC
+
+```{r}
+bfs_association_cr_acc <- bf_aov(df_color_rdk, 'acc', 'association')
+bfs_association_cr_acc
+```
+
+**可视化**
+
+```{r}
+plot_bfs_association <- plot_aov(bfs_association_cr_acc, 'bfs_a', 'Association effect: color rdk task(ACC)')
+plot_bfs_association
+
+plot_bfs_int <- plot_aov(bfs_association_cr_acc, 'bfs_int', 'Interaction: color rdk task(ACC)')
+plot_bfs_int
+```
+
+###### RT
+
+```{r}
+bfs_association_cr_rt <- bf_aov(df_color_rdk, 'rt', 'association')
+bfs_association_cr_rt
+```
+
+**可视化**
+
+```{r}
+plot_bfs_association <- plot_aov(bfs_association_cr_rt, 'bfs_a', 'Association effect: color rdk task(RT)')
+plot_bfs_association
+
+plot_bfs_int <- plot_aov(bfs_association_cr_rt, 'bfs_int', 'Interaction: color rdk task(RT)')
+plot_bfs_int
+```
+
+
+**End**
