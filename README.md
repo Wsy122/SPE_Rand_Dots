@@ -3,15 +3,24 @@
 This repo contains the experimental programs and data analysis code for "Self-prioritization effect in perceptual matching and discrimination tasks".
 
 ## Research Background and Aims
-The self-prioritization effect (SPE) refers to the phenomenon whereby self-related stimuli are processed more efficiently than stimuli not related to the self. This study combines the associative learning paradigm with a random dot motion (RDM) task to examine (a) whether the SPE persists in tasks without direct self-relevance, and (b) how this effect interacts with varying levels of task difficulty.
+The self-prioritization effect (SPE) refers to the phenomenon whereby self-related stimuli are processed more efficiently than stimuli not related to the self.
+This repository contains two experiments examining different aspects of the SPE:
+- **Experiment 1**: Examines whether SPE persists in tasks without direct self-relevance and how it interacts with varying levels of task difficulty (matching task + RDM discrimination).
+- **Experiment 2**: Investigates whether SPE is modulated by the task relevance of the feature-person association, specifically, whether the self-associated visual feature overlaps with or is independent of the discrimination task target.with a random dot motion task to examine (a) whether the SPE persists in tasks without direct self-relevance, and (b) how this effect interacts with varying levels of task difficulty.
 
 ## Experimental Design
-The experiment employed a 2 × 4 × 2 mixed design:
-- **Within-subject factors**:
+### Experiment 1: 
+- **2 × 4 × 2 mixed design:**
+  - **Within-subject factors**:
+    - `Association type`: self-related vs. stranger-related
+    - `Difficulty`: 4 levels (very easy, easy, difficult, very difficult)
+  - **Between-subject factor**:
+    - `Perceptual dimension`: motion vs. color 
+### Experiment 2:
+- **2 × 2 × 2 within-subject design**:
   - `Association type`: self-related vs. stranger-related
-  - `Difficulty`: 4 levels (very easy, easy, difficult, very difficult)
-- **Between-subject factor**:
-  - `Perceptual dimension`: motion vs. color 
+  - `Difficulty`: easy (~85% accuracy threshold) vs. difficult (~70% accuracy threshold)
+  - `Task relevance`: target-overlapped vs. target-independent
 
 ## Folder Structure
 ```
@@ -38,24 +47,26 @@ The experiment employed a 2 × 4 × 2 mixed design:
 |      └── HDDM/
 │      └── Functions/
 │      └── Data_clean.Rmd
-│      └── SBFA_SPE_exp.Rmd
+│      └── SBFA_SPE.Rmd
 |      └── BHM_Analysis_motion.Rmd
 |      └── BHM_Analysis_color.Rmd
 |    └── exp2
 │      └── Functions/
 │      └── Data_clean.Rmd
-│      └── SBFA_SPE_exp.Rmd
+│      └── SBFA_SPE.Rmd
 |      └── BHM_Analysis.Rmd
 |
 └── 3_Data/ 
 ```
-## Analysis Scripts
-
-- **Data_clean.Rmd:** Conducts preprocessing of raw experimental data to generate clean, analysis-ready datasets.
-  
-- **SBFA_SPE_exp.Rmd:** Implements a Sequential Bayesian Factor Analysis (SBFA) to calculate Bayesian factors (BFs) and guide data collection (i.e., stopping data collection when a pre-defined Bayesian evidence threshold is met).
-
-- **Analysis_exp1a.Rmd:** Performs primary statistical analyses to test the core hypotheses of the experiment.
+## Main Analysis Scripts
+### Experiment 1
+- **Data_clean.Rmd:** Preprocessing of raw experimental data to generate clean, analysis-ready datasets.
+- **SBFA_SPE.Rmd:** Sequential Bayesian Factor Analysis to calculate Bayesian factors (BFs) and guide data collection.
+- **BHM_Analysis_motion.Rmd / BHM_Analysis_color.Rmd:** Bayesian hierarchical model analyses by perceptual dimension.
+### Experiment 2
+- **Data_clean.Rmd:**
+- **SBFA_SPE.Rmd:** 
+- **BHM_Analysis.Rmd:**
 
 ## Getting Started
 
