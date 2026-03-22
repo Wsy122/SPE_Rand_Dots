@@ -32,7 +32,7 @@
 - 运动最难条件的目标正确率改为55%
 
 1221更新
-此实验为实验1b
+- 此实验为实验2
 - 运动和颜色分别选取较容易和较困难
 
 ------------------------------------------------------------*/
@@ -180,7 +180,7 @@ var fixation = {
 
 // 运动Staircase（StaircaseMotion1/StaircaseMotion2）
 const StaircaseMotion1 = {
-  max: 0.07,
+  max: 0.08,
   min: 0.12,
   difficultyType: 'easy',
   get: () => initial_difficulty_motion_easy,
@@ -197,7 +197,7 @@ const StaircaseMotion1 = {
 
 const StaircaseMotion2 = {
   max: 0.03,
-  min: 0.05,
+  min: 0.07,
   difficultyType: 'hard',
   get: () => initial_difficulty_motion_hard,
   set: (value) => {

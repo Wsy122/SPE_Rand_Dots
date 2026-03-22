@@ -73,6 +73,7 @@ var instruction_match = {
             <li><span style="color: hsl(135, 50%, 50%)">匹配</span>，请按键盘 <span style="color: hsl(135, 50%, 50%)">"F" 键</span>；</li>
             <li><span style="color: red">不匹配</span>，请按键盘 <span style="color: red">"J" 键</span> </li>
           </ul>
+          <p style="font-weight: bold">请尽可能又快又准地做出反应</p >
         </div>`;
     } else {
       this.stimulus = `
@@ -86,6 +87,7 @@ var instruction_match = {
             <li><span style="color: hsl(135, 50%, 50%)">匹配</span>，请按键盘 <span style="color: hsl(135, 50%, 50%)">"F" 键</span>；</li>
             <li><span style="color: red">不匹配</span>，请按键盘 <span style="color: red">"J" 键</span> </li>
           </ul>
+          <p style="font-weight: bold">请尽可能又快又准地做出反应</p >
         </div>`;
     }
   },
@@ -294,7 +296,7 @@ var feedbackTrial = {
     var rt = trial_data.rt
     if (rt > 0 && rt < 250) {
       return `<p style='font-size: 60px; color: yellow'>太快!</p>`;
-    } else if (rt == -1) {
+    } else if (rt > 300) {
       return `<p style='font-size: 60px; color: yellow'>太慢!</p>`;
     } else if (correct) {
       return `<p style='font-size: 60px; color: green'>正确!</p>`;
@@ -347,6 +349,7 @@ var instruction_practiceEnd = {
     <div style="text-align: center; color: white; padding: 30px; font-size: 30px">
       <p>恭喜您完成练习，请按空格键进入正式任务。</p >
       <p> 正式任务仅在每组 测试结束后提供反馈</p>
+      <p style="font-weight: bold">请尽可能又快又准地做出反应</p >
     </div>
     `,
   response_ends_trial: true,
@@ -667,7 +670,7 @@ var instruction_RDK_beginning = {
         <p>您需要判断 <span style="font-weight: bold">散点图的整体颜色（即大多数点的颜色）是红色还是蓝色 </span>：</p >
         <ul>
           <li>整体为 <span style="color: hsl(0, 50%, 50%)">红色</span>，请按键盘 <span style="color: hsl(0, 50%, 50%)">"D" 键</span></li>
-          <li>整体为 <span style="color: hsl(225, 50%, 50%)">蓝色</span>，请按键盘 <span style="color: hsl(225, 50%, 50%)">"k" 键</span> </li>
+          <li>整体为 <span style="color: hsl(225, 50%, 50%)">蓝色</span>，请按键盘 <span style="color: hsl(225, 50%, 50%)">"K" 键</span> </li>
         </ul>
         <p>请按下空格键进入练习阶段</p>
       </div>`,
@@ -707,7 +710,8 @@ var instruction_RDK_practice_end = {
     <div style="text-align: center; color: white; padding: 30px; font-size: 30px">
       <p>练习结束！</p >
       <p>继续练习请按 "Q" 键 </p>
-      <p>进入正式实验请按空格键, 正式实验仅在 每组 测试结束后提供反馈</p>
+      <p>进入正式实验请按空格键, 正式实验仅在每组测试结束后提供反馈</p>
+      <p style="font-weight: bold">请尽可能又快又准地做出反应</p >
     </div>
     `,
   response_ends_trial: true,

@@ -85,6 +85,7 @@ var instruction_match = {
           <li><span style="color: hsl(135, 50%, 50%)">匹配</span>，请按键盘 <span style="color: hsl(135, 50%, 50%)">"F" 键</span></li>
           <li><span style="color: red">不匹配</span>，请按键盘 <span style="color: red">"J" 键</span> </li>
         </ul>
+        <p style="font-weight: bold">请尽可能又快又准地做出反应</p >
       </div>`;
     } else {
       this.stimulus =  `
@@ -98,6 +99,7 @@ var instruction_match = {
           <li><span style="color: hsl(135, 50%, 50%)">匹配</span>，请按键盘 <span style="color: hsl(135, 50%, 50%)">"F" 键</span></li>
           <li><span style="color: red">不匹配</span>，请按键盘 <span style="color: red">"J" 键</span> </li>
         </ul>
+        <p style="font-weight: bold">请尽可能又快又准地做出反应</p >
       </div>`;
     }
   },
@@ -305,7 +307,7 @@ var feedbackTrial = {
     var rt = trial_data.rt
     if(rt > 0 && rt < 250){
       return `<p style='font-size: 60px; color: yellow'>太快!</p>`; 
-    } else if(rt == -1) {
+    } else if(rt > 300) {
       return `<p style='font-size: 60px; color: yellow'>太慢!</p>`; 
     } else if(correct){
       return `<p style='font-size: 60px; color: green'>正确!</p>`;
@@ -357,7 +359,8 @@ var instruction_practiceEnd = {
   stimulus: `
   <div style="text-align: center; color: white; padding: 30px; font-size: 30px">
     <p>恭喜您完成练习，请按空格键进入正式任务</p >
-    <p> 正式任务仅在 每组 测试结束后提供反馈</p>
+    <p> 正式任务仅在每组测试结束后提供反馈</p>
+    <p style="font-weight: bold">请尽可能又快又准地做出反应</p >
   </div>
   `,
   response_ends_trial: true,
@@ -730,7 +733,8 @@ var instruction_RDK_practice_end = {
   <div style="text-align: center; color: white; padding: 30px; font-size: 30px">
     <p>练习结束！</p >
     <p>继续练习请按 "Q" 键 </p>
-    <p>进入正式实验请按空格键, 正式实验仅在 每组 测试结束后提供反馈</p>
+    <p>进入正式实验请按空格键, 正式实验仅在每组测试结束后提供反馈</p>
+    <p style="font-weight: bold">请尽可能又快又准地做出反应</p >
   </div>
   `,
   response_ends_trial: true,
@@ -765,7 +769,7 @@ var instruction_RDK_formal_beginning = {
 // 运动方向判断任务
 
 //运动方向判断任务的不同条件
-// 2(self-dir) * 2(diff) * 2(dot_color_final) * 2(color_diff)= 16 种条件,其中只有dot_color_final是用来平衡顺序的
+// 2(association-dir) * 2(difficulty) * 2(dot_color) * 2(color_difficulty)= 16 种条件,其中dot_color是用来平衡顺序的
 
 let conditions_RDK_selfLeft = [
   { coherent_direction: 180, correct_choice: "ArrowLeft", coherence: 0.16, difficulty: "hard", association: "self",
