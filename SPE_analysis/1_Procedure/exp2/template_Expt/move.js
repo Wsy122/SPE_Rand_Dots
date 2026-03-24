@@ -307,7 +307,7 @@ var feedbackTrial = {
     var rt = trial_data.rt
     if(rt > 0 && rt < 250){
       return `<p style='font-size: 60px; color: yellow'>太快!</p>`; 
-    } else if(rt > 300) {
+    } else if(rt > 3000) {
       return `<p style='font-size: 60px; color: yellow'>太慢!</p>`; 
     } else if(correct){
       return `<p style='font-size: 60px; color: green'>正确!</p>`;
@@ -537,25 +537,47 @@ var rest_match = {
 var rest_rdk = {
   type: jsPsychHtmlKeyboardResponse,
   stimulus: function() {
-    // 根据 currentBlock 生成提示信息
     return `
       <div style="text-align: center; color: white; padding: 35px; font-size: 35px">
-        <p>恭喜您，已完成 ${currentBlock}/3</p>
-        <p>请休息一下，若准备好可按空格键继续</p>
+        <p>恭喜您，已完成 ${currentBlock}/4</p>
+        <p>请先休息 <span id="countdown" style="color:red; font-weight:bold;">30</span> 秒</p>
+        <p id="spaceTip" style="margin-top:20px; opacity:0.5;">休息结束后可按空格键继续</p>
       </div>
     `;
   },
-  response_ends_trial: true,
-  choices: " ",
+  response_ends_trial: false, // 强制休息，期间按键无效
+  choices: " ", // 只允许空格
+  trial_duration: null,
+
+  // 块数 +1
   on_start: function() {
-    currentBlock += 1
+    currentBlock += 1;
   },
+
+  on_load: function() {
+    let restTime = 30;
+    const countdownDom = document.getElementById('countdown');
+    const spaceTipDom = document.getElementById('spaceTip');
+    const trial = this;
+
+    // 倒计时定时器
+    const timer = setInterval(() => {
+      restTime -= 1;
+      countdownDom.textContent = restTime;
+
+      if (restTime <= 0) {
+        clearInterval(timer);
+        trial.response_ends_trial = true; // 时间到，允许按键继续
+        spaceTipDom.style.opacity = "1";
+        spaceTipDom.style.color = "#32cd32";
+      }
+    }, 1000);
+  },
+
   on_finish: function() {
     document.body.style.backgroundColor = "black";
   },
-  data: {
-    part: "instruction_rest"
-  }
+  data: { part: "instruction_rest" }
 };
 
 // 设置 block 的反馈
@@ -1051,12 +1073,28 @@ var formal_block_RDK_selfLeft = {
       randomize_order: true
     },
     feedbackBlock_RDK,
+    rest_rdk,
+    {
+      timeline: [fixation, RDK],
+      timeline_variables: conditions_RDK_selfLeft,
+      repetitions: 2,
+      randomize_order: true
+    },
+    feedbackBlock_RDK,
   ],
 };
 
 var formal_block_RDK_selfRight = {
   timeline: [
     instruction_RDK_formal_beginning,
+    {
+      timeline: [fixation, RDK],
+      timeline_variables: conditions_RDK_selfRight,
+      repetitions: 2,
+      randomize_order: true
+    },
+    feedbackBlock_RDK,
+    rest_rdk,
     {
       timeline: [fixation, RDK],
       timeline_variables: conditions_RDK_selfRight,
@@ -1456,12 +1494,28 @@ var formal_block_color_selfLeft = {
       randomize_order: true
     },
     feedbackBlock_RDK,
+    rest_rdk,
+    {
+      timeline: [fixation, RDK_color],
+      timeline_variables: conditions_color_selfLeft,
+      repetitions: 2,
+      randomize_order: true
+    },
+    feedbackBlock_RDK,
   ],
 };
 
 var formal_block_color_selfRight = {
   timeline: [
     instruction_color,
+    {
+      timeline: [fixation, RDK_color],
+      timeline_variables: conditions_color_selfRight,
+      repetitions: 2,
+      randomize_order: true
+    },
+    feedbackBlock_RDK,
+    rest_rdk,
     {
       timeline: [fixation, RDK_color],
       timeline_variables: conditions_color_selfRight,
