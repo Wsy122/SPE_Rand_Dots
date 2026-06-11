@@ -86,33 +86,70 @@ for (i in seq_along(file_list)) {
 # 定义需要转换的变量名
 factor_vars <- c("subj_idx", "association", "difficulty")
 
-# 提取数据框
-df_color_diff_match <- df_list[[1]] 
-df_color_diff_rdk <- df_list[[2]] 
-df_color_match <- df_list[[3]] %>% 
-  dplyr::mutate(dplyr::across(all_of(factor_vars), as.factor))
-df_color_rdk <- df_list[[4]] %>% 
-  dplyr::mutate(dplyr::across(all_of(factor_vars), as.factor))
-
-df_motion_diff_match <- df_list[[5]]
-df_motion_diff_rdk <- df_list[[6]]
-df_motion_match <- df_list[[7]] %>% 
-  dplyr::mutate(dplyr::across(all_of(factor_vars), as.factor))
-df_motion_rdk <- df_list[[8]] %>% 
-  dplyr::mutate(dplyr::across(all_of(factor_vars), as.factor))
+# 导入数据
+# data_sbfa
 ```
 
 
 ## BF 值计算
 
 ```{r}
-data_sbfa <- data_sbfa %>% 
+data_rdk <- data_sbfa %>% 
   dplyr::filter(part %in% c('RDK_color', 'RDK_motion')) %>%
   dplyr::mutate(subj_idx = as.factor(subj_idx))
+
+data_match <- data_sbfa %>% 
+  dplyr::filter(part %in% c('match_RDK')) %>%
+  dplyr::mutate(subj_idx = as.factor(subj_idx))
+
+data_match_jasp <- data_match %>%
+  # dplyr::select(subj_idx, acc, rt, association, difficulty, group) %>%
+  # 组合 part、difficulty、association 为新列名（用下划线连接）
+  mutate(new_col = paste(association, isMatch, sep = "_")) %>%
+  # 转换为宽表：行由 subj_idx、isMatch、group 定义，列由 new_col 定义，数值为 rt 和 acc
+  pivot_wider(
+    id_cols = c(subj_idx),  # 保持这些列为行标识
+    names_from = new_col,                  # 用 new_col 的值作为新列名
+    values_from = c(rt, acc),              # 分别将 rt 和 acc 转换为宽表数值
+    # names_sep = "_"                        # 列名中用下划线分隔（可选，增强可读性）
+  ) %>%
+  tidyr::unnest(cols = everything())
+
+# 输出到新的CSV文件
+output_file <- base::file.path(output_path, "data_match_jasp.csv")
+utils::write.csv(data_match_jasp, output_file, row.names = FALSE)
 ```
 
+### 匹配任务
+#### ACC
+```{r}
+bfs_acc <- bf_aov(data_match, 'acc')
 
-### ACC
+bfs_acc
+```
+
+#### RT
+
+```{r}
+data_match <- data_match %>%
+  filter(is.finite(rt))
+```
+
+```{r}
+bfs_rt <- bf_aov(data_match, 'rt')
+
+bfs_rt
+```
+
+```{r}
+bfs_rt <- bf_aov(df_motion_match, 'rt')
+
+bfs_rt
+```
+
+### 辨别任务
+
+#### ACC
 
 ```{r}
 bfs_acc <- bf_aov(data_sbfa, 'acc')
@@ -130,7 +167,7 @@ plot_bfs_int <- plot_aov(bfs_acc, 'bfs_int', 'Interaction (ACC)')
 plot_bfs_int
 ```
 
-####RT
+#### RT
 
 ```{r}
 bfs_rt <- bf_aov(data_sbfa, 'rt')
