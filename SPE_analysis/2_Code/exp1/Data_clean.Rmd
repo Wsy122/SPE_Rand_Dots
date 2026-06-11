@@ -20,7 +20,7 @@ pacman::p_load(
   "palmerpenguins", "dplyr", "patchwork", "RColorBrewer"
 )
 
-source("../../SPE_analysis/2_Code/Functions/R_rainclouds.R")
+source("Functions/R_rainclouds.R")
 ```
 
 ## 1. 读取数据
@@ -29,7 +29,7 @@ source("../../SPE_analysis/2_Code/Functions/R_rainclouds.R")
 
 ```{r}
 # 设置目标文件夹的上级路径
-parent_folder <- "../3_Data/exp1a/RawData/"
+parent_folder <- "../../3_Data/3_1_exp1/RawData/"
 
 # 指定需要读取的子文件夹名称
 sub_folders <- c("motion", "color")
@@ -45,7 +45,7 @@ for (folder in sub_folders) {
   # 列出当前文件夹中符合条件的文件
   file_list <- list.files(
     path = folder_path,
-    pattern = "*exp1a_subj.*\\.csv$", 
+    pattern = "*exp1_subj.*\\.csv$", 
     full.names = TRUE
   )
   
@@ -74,7 +74,7 @@ print(names(df_list_1))
 
 ```{r}
 # 创建输出文件夹（如果不存在）
-output_path <- "../3_Data/exp1a/CleanData"
+output_path <- "../../3_Data/3_1_exp1/CleanData"
 if (!dir.exists(output_path)) {
   dir.create(output_path, recursive = TRUE)
 }
@@ -157,12 +157,12 @@ for (file_name in names(df_list_1)) {
 
 ```{r message=FALSE}
 # 设置目标文件夹相对路径
-folder_path <- "../3_Data/exp1a/CleanData"
+folder_path <- "../../3_Data/3_1_exp1/CleanData"
 
 # 列出所有含有"pilot_expt_"的csv文件
 file_list <- list.files(
   path = folder_path,
-  pattern = "*exp1a_subj_.*\\.csv$", full.names = TRUE
+  pattern = "*exp1_subj_.*\\.csv$", full.names = TRUE
 )
 
 # 创建一个空列表来存储数据
@@ -219,7 +219,7 @@ compute_rt_acc <- function(data){
   data <- data %>%
     dplyr::filter(part %in% c("match_RDK","RDK")) %>%
     dplyr::filter(rt != -1) %>%
-    dplyr::group_by(subj_idx, part, difficulty, association) %>%
+    dplyr::group_by(subj_idx, part, difficulty, association,isMatch) %>%
     dplyr::summarise(
       # rt = mean(rt, na.rm = TRUE),  # 所有有效 trials 的平均反应时
       rt = mean(rt[correct == 1 & rt >= 100 & rt <= 3000], na.rm = TRUE),  # 仅正确 trials 的平均反应时
@@ -230,7 +230,7 @@ compute_rt_acc <- function(data){
 }
 
 # 计算自我-他人差异，即SPE
-compute_diff <- function(data, keepMatch=FALSE){
+compute_diff <- function(data, keepMatch=TRUE){
   # 决定分组变量
   group_vars <- if(keepMatch) {
     c("subj_idx", "part", "difficulty", "difficulty_code", "isMatch")
@@ -290,7 +290,7 @@ data1 <- data %>%
 data_motion <- data1 %>%
   dplyr::select(
     subj_idx, rt, correct, coherence, part, response, coherent_direction,
-    isMatch, association, difficulty, difficulty_code
+    isMatch, association, difficulty
   ) %>%
   # 先将correct转换为数值型（TRUE=1, FALSE=0）
   dplyr::mutate(correct = as.numeric(as.logical(correct))) %>%
@@ -332,7 +332,7 @@ data2 <- data %>%
 data_color <- data2 %>%
   dplyr::select(
     subj_idx, rt, correct, coherence, part, response, dot_color_final,
-    isMatch, association, difficulty, difficulty_code
+    isMatch, association, difficulty
   ) %>%
   dplyr::mutate(correct = as.numeric(as.logical(correct))) %>%
   dplyr::mutate(rt = rt / 1000)
@@ -370,7 +370,7 @@ data_color_diff <- compute_diff(data_color_rt_acc) %>%
 df_motion_match <- data_motion_rt_acc %>% 
   dplyr::filter(# difficulty %in% c(1, 4), 
     part %in% c('match_RDK')) %>%
-  dplyr::select(subj_idx, acc, rt, association, difficulty, difficulty_code, group) %>%
+  dplyr::select(subj_idx, acc, rt, association, difficulty, difficulty_code, group, isMatch) %>%
   #类型为character的转换为因子类型，便于后续分析
   dplyr::mutate(subj_idx = as.factor(subj_idx),
          association = as.factor(association))
@@ -383,7 +383,7 @@ df_motion_diff_match <- data_motion_diff %>%
   # 只选择难度为1 和 4 的
   dplyr::filter(# difficulty %in% c(1,2,3,4), 
          part %in% c('match_RDK')) %>%
-  dplyr::select(subj_idx, acc_diff_so, rt_diff_os, difficulty, difficulty_code) %>%
+  dplyr::select(subj_idx, acc_diff_so, rt_diff_os, difficulty, difficulty_code, isMatch) %>%
   #类型为character的转换为因子类型，便于后续分析
   dplyr::mutate(subj_idx = as.factor(subj_idx))#  %>%
   # tidyr::pivot_wider(
@@ -406,8 +406,8 @@ data_motion_match_jasp <- df_motion_match %>%
 # 输出到新的CSV文件
 output_file <- base::file.path(output_path, "df_motion_diff_match.csv")
 utils::write.csv(df_motion_diff_match, output_file, row.names = FALSE)
-output_file <- base::file.path(output_path, "data_motion_match_jasp.csv")
-utils::write.csv(data_motion_match_jasp, output_file, row.names = FALSE)
+# output_file <- base::file.path(output_path, "data_motion_match_jasp.csv")
+# utils::write.csv(data_motion_match_jasp, output_file, row.names = FALSE)
 ```
 
 #### 运动组-辨别任务
@@ -461,7 +461,7 @@ utils::write.csv(data_motion_rdk_jasp, output_file, row.names = FALSE)
 df_color_match <- data_color_rt_acc %>% 
   dplyr::filter(# difficulty %in% c(1, 4), 
     part %in% c('match_RDK')) %>%
-  dplyr::select(subj_idx, acc, rt, association, difficulty, difficulty_code, group) %>%
+  dplyr::select(subj_idx, acc, rt, association, difficulty, difficulty_code, group,isMatch) %>%
   #类型为character的转换为因子类型，便于后续分析
   dplyr::mutate(subj_idx = as.factor(subj_idx),
          association = as.factor(association))
@@ -475,7 +475,7 @@ df_color_diff_match <- data_color_diff %>%
   # 只选择难度为1 和 4 的
   dplyr::filter(difficulty %in% c(1, 2, 3, 4),
          part %in% c('match_RDK')) %>%
-  dplyr::select(subj_idx, acc_diff_so, rt_diff_os, difficulty, difficulty_code) %>%
+  dplyr::select(subj_idx, acc_diff_so, rt_diff_os, difficulty, difficulty_code,isMatch) %>%
   #类型为character的转换为因子类型，便于后续分析
   dplyr::mutate(subj_idx = as.factor(subj_idx)) # %>%
   # tidyr::pivot_wider(
@@ -528,291 +528,919 @@ matching_task_analysis <- function(data, task){
   
   # 获取数据名
   data_name <- deparse(substitute(data))
-  # 从数据名中区分不同的组别（增加容错，避免拆分失败）
   split_result <- strsplit(data_name, "_")[[1]]
   group <- ifelse(length(split_result)>=2, split_result[2], "Unknown")
   group <- paste(group, collapse = "_")
   
-  # 数据预处理
+  # -------------------------- 自我 / 他人 --------------------------
   data <- data %>% 
     filter(part == task) %>% 
     dplyr::mutate(
-      difficulty = as.factor(difficulty)  # 难度转为因子
-      # 不再需要将subj_idx转为因子，因为不再用它映射颜色
+      association = factor(
+        association, 
+        levels = c("self", "other"), 
+        labels = c("自我", "他人")
+      ),
+      # 只保留 自我 / 他人 2个条件
+      condition = association
     )
   
-  # ------------ 用RColorBrewer设置配色 ------------
-  # 获取难度的水平数量
-  n_difficulty <- length(unique(data$difficulty))
-  # 选择合适的配色方案（可根据需求替换，如"Set2", "Paired", "Spectral"等）
-  # 若难度数量超过配色数量，自动循环补充
-  color_palette <- brewer.pal(min(n_difficulty, 8), "Set2")  # Set2是美观的离散配色
-  if (n_difficulty > length(color_palette)) {
-    color_palette <- rep(color_palette, length.out = n_difficulty)
-  }
+  # 配色：2个颜色
+  color_palette <- c("#0055BB", "#99C2FF")
+  names(color_palette) <- levels(data$condition)
   
-  # ACC plot (match condition)
+  # -------------------------- ACC图 --------------------------
   acc_plot <- ggplot(
     data,
-    aes(x = difficulty, y = acc, fill = difficulty, colour = difficulty)) +
-    # 小提琴图：使用难度的颜色
+    aes(x = condition, y = acc, fill = condition, colour = condition, alpha = association)
+  ) +
     geom_flat_violin(
-      position = position_nudge(x = .2, y = 0), 
+      position = position_nudge(x = 0.15, y = 0),
       adjust = 1.2, 
-      trim = FALSE, 
-      alpha = 0.7) +  # 提高透明度，更美观
-    # 散点图：颜色和小提琴图一致（映射difficulty，不再用subj_idx）
+      trim = FALSE,
+      alpha = 0.7,
+      scale = "width" 
+    ) +
     geom_jitter(
-      aes(color = difficulty),  # 关键：散点颜色和难度一致
-      width = 0.15, 
-      size = 1,                 # 调整点大小
-      alpha = 0.6) +            # 散点透明度，避免重叠
-    # 箱线图：黑色边框，无填充，突出分布
+      aes(x = as.numeric(condition)),
+      width = 0.05,
+      alpha = 0.4,
+      seed = 123,
+      size = 0.6,
+      show.legend = FALSE
+    ) +
     geom_boxplot(
-      aes(x = difficulty, y = acc), 
       outlier.shape = NA, 
-      alpha = 0.5, 
-      width = .1, 
-      colour = "BLACK",
-      fill = NA) +
-    # 坐标轴和刻度
+      width = 0.07, 
+      colour = "black",
+      fill = NA,
+      show.legend = FALSE
+    ) +
     ylab("ACC") + 
-    xlab("Difficulty") + 
+    xlab("") + 
     coord_flip() +
-    scale_y_continuous(breaks = seq(0, 1, by = 0.1)) +
-    # ------------ 应用RColorBrewer配色 ------------
+    scale_y_continuous(breaks = seq(0, 1, by = 0.2), limits = c(0, 1)) +
     scale_fill_manual(values = color_palette) +
     scale_colour_manual(values = color_palette) +
-    # 主题和图例
+    scale_alpha_manual(
+      values = c("自我" = 1.0, "他人" = 0.5), 
+      name = "关联类型"
+    ) +
     theme_cowplot() + 
-    guides(fill = "none", colour = "none") +  # 隐藏图例（如需显示可改为TRUE）
-    ggtitle(group) +
+    papaja::theme_apa() +
+    # ----------------- ACC 关闭图例 -----------------
+    guides(fill = "none", colour = "none", alpha = "none") +
     theme(
-      plot.title = element_text(size = 12, hjust = 0.5),
-      axis.text = element_text(size = 10),
-      axis.title = element_text(size = 11)
+      axis.title.x = element_text(size = 25, margin = margin(t = 8)),
+      axis.text.x = element_text(size = 25),
+      axis.text.y = element_blank(),
+      axis.ticks.y = element_blank(),
+      legend.title = element_text(size = 20, face = "bold"),
+      legend.text = element_text(size = 18),
+      legend.key.size = unit(0.8, "cm"),
+      plot.margin = margin(t = 10, r = 5, b = 10, l = 10)
     )
-
-  # RT plot (match condition)
+  
+  # -------------------------- RT图（保留图例） --------------------------
   rt_plot <- ggplot(
     data,
-    aes(x = difficulty, y = rt, fill = difficulty, colour = difficulty)) +
-    # 小提琴图：使用难度的颜色
+    aes(x = condition, y = rt, fill = condition, colour = condition, alpha = association)
+  ) +
     geom_flat_violin(
-      position = position_nudge(x = .2, y = 0), 
+      position = position_nudge(x = 0.15, y = 0),
       adjust = 1.2, 
-      trim = FALSE, 
-      alpha = 0.7) +
-    # 散点图：颜色和小提琴图一致
+      trim = FALSE,
+      alpha = 0.7,
+      scale = "width"
+    ) +
     geom_jitter(
-      aes(color = difficulty),
-      width = 0.1, 
-      size = 1,
-      alpha = 0.6) +
-    # 箱线图：黑色边框，无填充
+      aes(x = as.numeric(condition)),
+      width = 0.05,
+      alpha = 0.4,
+      seed = 123,
+      size = 0.6,
+      show.legend = FALSE
+    ) +
     geom_boxplot(
-      aes(x = difficulty, y = rt), 
       outlier.shape = NA, 
-      alpha = 0.5, 
-      width = .1, 
-      colour = "BLACK",
-      fill = NA) +
-    # 坐标轴
+      width = 0.07, 
+      colour = "black",
+      fill = NA,
+      show.legend = FALSE
+    ) +
     ylab("RT (ms)") + 
-    xlab(' ') + 
+    xlab("") + 
     coord_flip() +
-    # 应用相同的配色
+    scale_y_continuous(breaks = seq(500, 3000, by = 500)) +
     scale_fill_manual(values = color_palette) +
     scale_colour_manual(values = color_palette) +
-    # 主题和图例
+    scale_alpha_manual(
+      values = c("自我" = 1.0, "他人" = 0.5),
+      name = "关联类型"
+    ) +
     theme_cowplot() + 
-    guides(fill = "none", colour = "none") +
+    papaja::theme_apa() +
+    # ----------------- RT 保留图例 -----------------
+    guides(
+      fill = guide_legend(order = 1, title = "关联类型"),
+      colour = "none",
+      alpha = "none"
+    ) +
     theme(
-      axis.text = element_text(size = 10),
-      axis.title = element_text(size = 11)
-    )
+      axis.title.x = element_text(size = 25, margin = margin(t = 8)),
+      axis.text.x = element_text(size = 25),
+      axis.text.y = element_text(size = 23),
+      axis.ticks.y = element_line(size = 0.5),
+      legend.title = element_text(size = 20),
+      legend.text = element_text(size = 18),
+      legend.key.size = unit(0.8, "cm"),
+      plot.margin = margin(t = 10, r = 10, b = 10, l = 0)
+    ) 
   
-  # 组合图（修复标题拼写错误：match tack → Matching Task）
+  # -------------------------- 组合布局 --------------------------
   plot_title <- paste0(task, " ", group)
-  combined_plot <- acc_plot + rt_plot +
+  combined_plot <- rt_plot + acc_plot +
     plot_annotation(
       title = plot_title,
-      theme = theme(plot.title = element_text(size = 20, hjust = 0.5, face = "bold"))
+      theme = theme(
+        plot.title = element_text(size = 20, hjust = 0.5, face = "bold", margin = margin(b = 15))
+      )
     ) +
-    plot_layout(ncol = 2, widths = c(1, 1))  # 明确2列布局，保证比例均匀
+    plot_layout(
+      ncol = 2, 
+      widths = c(1.1, 0.9),
+      guides = "collect"
+    ) &
+    theme(legend.position = "right")
   
-  # 打印组合图
   print(combined_plot)
-  
-  # 可选：返回组合图对象，方便后续保存
   return(invisible(combined_plot))
 }
 ```
+
+```{r}
+library(tidyverse)
+library(ggrain)
+library(cowplot)
+library(papaja)
+
+matching_task_analysis <- function(data, task){
+  
+  # 获取数据名，提取分组（motion/color）
+  data_name <- deparse(substitute(data))
+  split_result <- strsplit(data_name, "_")[[1]]
+  group <- ifelse(length(split_result)>=2, split_result[2], "Unknown")
+  group <- paste(group, collapse = "_")
+  
+  # 筛选当前任务数据
+  data_raw <- data %>% filter(part == task)
+  
+  # ---------------------- 匹配任务 match_RDK ----------------------
+  if (task == "match_RDK") {
+    data <- data_raw %>%
+      dplyr::mutate(
+        # 调换levels顺序：other在前，self在后 → 图例他人在上、自我在下
+        association = factor(
+          association, 
+          levels = c("other", "self"), 
+          labels = c("他人", "自我")
+        ),
+        # 构建垂直分层变量：match在上层，mismatch在下层
+        match_layer = factor(
+          isMatch,
+          levels = c("match", "mismatch"),
+          labels = c("匹配条件", "不匹配条件")
+        ),
+        condition = association
+      )
+    
+    color_palette <- c("#99C2FF", "#0055BB")
+    names(color_palette) <- levels(data$condition)
+    
+    # ---------------------- 匹配任务-ACC图 ----------------------
+    acc_plot <- ggplot(
+      data,
+      aes(x = condition, y = acc, fill = condition, colour = condition, alpha = association)
+    ) +
+      geom_flat_violin(
+        position = position_nudge(x = 0.15, y = 0),
+        adjust = 1.2, 
+        trim = FALSE,
+        alpha = 0.7,
+        scale = "width" 
+      ) +
+      geom_jitter(
+        aes(x = as.numeric(condition)),
+        width = 0.05,
+        alpha = 0.4,
+        seed = 123,
+        size = 0.6,
+        show.legend = FALSE
+      ) +
+      geom_boxplot(
+        outlier.shape = NA, 
+        width = 0.07, 
+        colour = "black",
+        fill = NA,
+        show.legend = FALSE
+      ) +
+      ylab("ACC") + 
+      xlab("") + 
+      coord_flip() +
+      scale_y_continuous(breaks = seq(0, 1, by = 0.2), limits = c(0, 1)) +
+      scale_fill_manual(values = color_palette) +
+      scale_colour_manual(values = color_palette) +
+      scale_alpha_manual(
+        values = c("他人" = 0.5, "自我" = 1.0), 
+        name = "关联类型"
+      ) +
+      theme_cowplot() + 
+      papaja::theme_apa() +
+      guides(fill = "none", colour = "none", alpha = "none") +
+      # 按match_layer上下分面，无分面坐标轴
+      facet_wrap(~match_layer, ncol = 1, scales = "free_y") +
+      theme(
+        axis.title.x = element_text(size = 30, margin = margin(t = 8)),
+        axis.text.x = element_text(size = 30),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        plot.margin = margin(t = 10, r = 5, b = 10, l = 10),
+        strip.text = element_text(size = 20, face = "bold"), # 分面标题大小
+        strip.background = element_blank()
+      )
+    
+    # ---------------------- 匹配任务-RT图 ----------------------
+    rt_plot <- ggplot(
+      data,
+      aes(x = condition, y = rt, fill = condition, colour = condition, alpha = association)
+    ) +
+      geom_flat_violin(
+        position = position_nudge(x = 0.15, y = 0),
+        adjust = 1.2, 
+        trim = FALSE,
+        alpha = 0.7,
+        scale = "width"
+      ) +
+      geom_jitter(
+        aes(x = as.numeric(condition)),
+        width = 0.05,
+        alpha = 0.4,
+        seed = 123,
+        size = 0.6,
+        show.legend = FALSE
+      ) +
+      geom_boxplot(
+        outlier.shape = NA, 
+        width = 0.07, 
+        colour = "black",
+        fill = NA,
+        show.legend = FALSE
+      ) +
+      ylab("RT (ms)") + 
+      xlab("") + 
+      coord_flip() +
+      scale_y_continuous(breaks = seq(500, 3000, by = 500)) +
+      scale_fill_manual(values = color_palette) +
+      scale_colour_manual(values = color_palette) +
+      scale_alpha_manual(
+        values = c("他人" = 0.5, "自我" = 1.0),
+        name = "关联类型"
+      ) +
+      theme_cowplot() + 
+      papaja::theme_apa() +
+      guides(
+        fill = guide_legend(order = 1, title = "关联类型"),
+        colour = "none",
+        alpha = "none"
+      ) +
+      # 同ACC分面布局
+      facet_wrap(~match_layer, ncol = 1, scales = "free_y") +
+      theme(
+        axis.title.x = element_text(size = 30, margin = margin(t = 8)),
+        axis.text.x = element_text(size = 30),
+        axis.text.y = element_text(size = 30),
+        axis.ticks.y = element_line(size = 0.5),
+        legend.title = element_text(size = 20),
+        legend.text = element_text(size = 18),
+        legend.key.size = unit(0.8, "cm"),
+        plot.margin = margin(t = 10, r = 10, b = 10, l = 0),
+        strip.text = element_text(size = 20, face = "bold"),
+        strip.background = element_blank()
+      ) 
+  }
+  
+  # ---------------------- 辨别任务 RDK ----------------------
+  else if (task == "RDK") {
+    data <- data_raw %>% 
+      dplyr::mutate(
+        # 调换levels顺序：other在前，self在后
+        association = factor(
+          association, 
+          levels = c("other", "self"), 
+          labels = c("他人", "自我")
+        ),
+        condition = association
+      )
+    # 配色同步调换
+    color_palette <- c("#99C2FF", "#0055BB")
+    names(color_palette) <- levels(data$condition)
+    
+    # ---------------------- 辨别任务-ACC图 ----------------------
+    acc_plot <- ggplot(
+      data,
+      aes(x = condition, y = acc, fill = condition, colour = condition, alpha = association)
+    ) +
+      geom_flat_violin(
+        position = position_nudge(x = 0.15, y = 0),
+        adjust = 1.2, 
+        trim = FALSE,
+        alpha = 0.7,
+        scale = "width" 
+      ) +
+      geom_jitter(
+        aes(x = as.numeric(condition)),
+        width = 0.05,
+        alpha = 0.4,
+        seed = 123,
+        size = 0.6,
+        show.legend = FALSE
+      ) +
+      geom_boxplot(
+        outlier.shape = NA, 
+        width = 0.07, 
+        colour = "black",
+        fill = NA,
+        show.legend = FALSE
+      ) +
+      ylab("ACC") + 
+      xlab("") + 
+      coord_flip() +
+      scale_y_continuous(breaks = seq(0, 1, by = 0.2), limits = c(0, 1)) +
+      scale_fill_manual(values = color_palette) +
+      scale_colour_manual(values = color_palette) +
+      scale_alpha_manual(
+        values = c("他人" = 0.5, "自我" = 1.0), 
+        name = "关联类型"
+      ) +
+      theme_cowplot() + 
+      papaja::theme_apa() +
+      guides(fill = "none", colour = "none", alpha = "none") +
+      theme(
+        axis.title.x = element_text(size = 30, margin = margin(t = 8)),
+        axis.text.x = element_text(size = 30),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        plot.margin = margin(t = 10, r = 5, b = 10, l = 10)
+      )
+    
+    # ---------------------- 辨别任务-RT图 ----------------------
+    rt_plot <- ggplot(
+      data,
+      aes(x = condition, y = rt, fill = condition, colour = condition, alpha = association)
+    ) +
+      geom_flat_violin(
+        position = position_nudge(x = 0.15, y = 0),
+        adjust = 1.2, 
+        trim = FALSE,
+        alpha = 0.7,
+        scale = "width"
+      ) +
+      geom_jitter(
+        aes(x = as.numeric(condition)),
+        width = 0.05,
+        alpha = 0.4,
+        seed = 123,
+        size = 0.6,
+        show.legend = FALSE
+      ) +
+      geom_boxplot(
+        outlier.shape = NA, 
+        width = 0.07, 
+        colour = "black",
+        fill = NA,
+        show.legend = FALSE
+      ) +
+      ylab("RT (ms)") + 
+      xlab("") + 
+      coord_flip() +
+      scale_y_continuous(breaks = seq(500, 3000, by = 500)) +
+      scale_fill_manual(values = color_palette) +
+      scale_colour_manual(values = color_palette) +
+      scale_alpha_manual(
+        values = c("他人" = 0.5, "自我" = 1.0),
+        name = "关联类型"
+      ) +
+      theme_cowplot() + 
+      papaja::theme_apa() +
+      guides(
+        fill = guide_legend(order = 1, title = "关联类型"),
+        colour = "none",
+        alpha = "none"
+      ) +
+      theme(
+        axis.title.x = element_text(size = 30, margin = margin(t = 8)),
+        axis.text.x = element_text(size = 30),
+        axis.text.y = element_text(size = 30),
+        axis.ticks.y = element_line(size = 0.5),
+        legend.title = element_text(size = 28),
+        legend.text = element_text(size = 28),
+        legend.key.size = unit(2, "cm"),
+        plot.margin = margin(t = 10, r = 10, b = 10, l = 0)
+      ) 
+  }
+  
+  # -------------------------- 统一组合布局（两种任务共用） --------------------------
+  plot_title <- paste0(task, " ", group)
+  combined_plot <- rt_plot + acc_plot +
+    # plot_annotation(
+    #   title = plot_title,
+    #   theme = theme(
+    #     plot.title = element_text(size = 20, hjust = 0.5, face = "bold", margin = margin(b = 15))
+    #   )
+    # ) +
+    plot_layout(
+      ncol = 2, 
+      widths = c(1.1, 0.9),
+      guides = "collect"
+    ) &
+    theme(legend.position = "right")
+  
+  print(combined_plot)
+  return(invisible(combined_plot))
+}
+```
+
+```{r}
+#区分难度
+matching_task_analysis <- function(data, task){
+  
+  # 获取数据名，提取分组（motion/color）
+  data_name <- deparse(substitute(data))
+  split_result <- strsplit(data_name, "_")[[1]]
+  group <- ifelse(length(split_result)>=2, split_result[2], "Unknown")
+  group <- paste(group, collapse = "_")
+  
+  # 筛选当前任务数据
+  data_raw <- data %>% filter(part == task)
+  
+  # 全局绘图控制参数
+  dodge_width <- 0.8
+  acc_y_offset <- -0.06
+  rt_y_offset <- -60
+  color_palette <- c("#99C2FF", "#0055BB")
+  names(color_palette) <- c("他人", "自我")
+  
+  # ---------------------- 数据统一预处理：4水平难度转换 ----------------------
+  data_process <- data_raw %>%
+    dplyr::mutate(
+      association = factor(
+        association, 
+        levels = c("other", "self"), 
+        labels = c("他人", "自我")
+      ),
+      condition = association,
+      # 数字difficulty转为4档文字难度，固定绘图顺序
+      difficulty = factor(
+        difficulty,
+        levels = c(1, 2, 3, 4),
+        labels = c("容易", "较容易", "较困难", "困难")
+      )
+    )
+  
+  # ---------------------- 匹配任务 match_RDK ----------------------
+  if (task == "match_RDK") {
+    data <- data_process %>%
+      dplyr::mutate(
+        match_layer = factor(
+          isMatch,
+          levels = c("match", "mismatch"),
+          labels = c("匹配条件", "不匹配条件")
+        )
+      )
+    
+    # ---------------------- 匹配任务-ACC图 ----------------------
+    acc_plot <- ggplot(
+      data,
+      aes(x = difficulty,
+          y = acc,
+          fill = condition,
+          colour = condition,
+          group = interaction(difficulty, association))
+    ) +
+      geom_flat_violin(
+        position = position_dodge(width = dodge_width),
+        adjust = 1.2,
+        trim = FALSE,
+        alpha = 0.7,
+        scale = "width"
+      ) +
+      geom_jitter(
+        aes(y = acc + acc_y_offset),
+        position = position_jitterdodge(
+          dodge.width = dodge_width,
+          jitter.height = 0,
+          seed = 123
+        ),
+        alpha = 0.4,
+        size = 0.6,
+        show.legend = FALSE
+      ) +
+      geom_boxplot(
+        aes(y = acc + acc_y_offset),
+        outlier.shape = NA,
+        width = 0.07,
+        colour = "black",
+        fill = NA,
+        position = position_dodge(width = dodge_width),
+        show.legend = FALSE
+      ) +
+      ylab("ACC") +
+      xlab("") +
+      coord_flip() +
+      scale_y_continuous(breaks = seq(0, 1, by = 0.2), limits = c(0, 1)) +
+      scale_fill_manual(values = color_palette) +
+      scale_colour_manual(values = color_palette) +
+      theme_cowplot() +
+      papaja::theme_apa() +
+      guides(fill = "none", colour = "none") +
+      facet_wrap(~match_layer, ncol = 1, scales = "free_y") +
+      theme(
+        axis.title.x = element_text(size = 30, margin = margin(t = 8)),
+        axis.text.x = element_text(size = 30),
+        axis.text.y = element_text(size = 30),
+        axis.ticks.y = element_line(size = 0.5),
+        plot.margin = margin(t = 10, r = 5, b = 10, l = 10),
+        strip.text = element_text(size = 20, face = "bold"),
+        strip.background = element_blank()
+      )
+    
+    # ---------------------- 匹配任务-RT图 ----------------------
+    rt_plot <- ggplot(
+      data,
+      aes(x = difficulty,
+          y = rt,
+          fill = condition,
+          colour = condition,
+          group = interaction(difficulty, association))
+    ) +
+      geom_flat_violin(
+        position = position_dodge(width = dodge_width),
+        adjust = 1.2,
+        trim = FALSE,
+        alpha = 0.7,
+        scale = "width"
+      ) +
+      geom_jitter(
+        aes(y = rt + rt_y_offset),
+        position = position_jitterdodge(
+          dodge.width = dodge_width,
+          jitter.height = 0,
+          seed = 123
+        ),
+        alpha = 0.4,
+        size = 0.6,
+        show.legend = FALSE
+      ) +
+      geom_boxplot(
+        aes(y = rt + rt_y_offset),
+        outlier.shape = NA,
+        width = 0.07,
+        colour = "black",
+        fill = NA,
+        position = position_dodge(width = dodge_width),
+        show.legend = FALSE
+      ) +
+      ylab("RT (ms)") +
+      xlab("") +
+      coord_flip() +
+      scale_y_continuous(breaks = seq(1000, 3000, by = 1000)) +
+      scale_fill_manual(values = color_palette, name = "关联类型") +
+      scale_colour_manual(values = color_palette) +
+      theme_cowplot() +
+      papaja::theme_apa() +
+      guides(
+        fill = guide_legend(order = 1, title = "关联类型"),
+        colour = "none"
+      ) +
+      facet_wrap(~match_layer, ncol = 1, scales = "free_y") +
+      theme(
+        axis.title.x = element_text(size = 30, margin = margin(t = 8)),
+        axis.text.x = element_text(size = 30),
+        axis.text.y = element_text(size = 30),
+        axis.ticks.y = element_line(size = 0.5),
+        legend.title = element_text(size = 20),
+        legend.text = element_text(size = 18),
+        legend.key.size = unit(0.8, "cm"),
+        plot.margin = margin(t = 10, r = 10, b = 10, l = 0),
+        strip.text = element_text(size = 20, face = "bold"),
+        strip.background = element_blank()
+      ) 
+  }
+  
+  # ---------------------- 辨别任务 RDK ----------------------
+  else if (task == "RDK") {
+    data <- data_process
+    
+    # ---------------------- 辨别任务-ACC图 ----------------------
+    acc_plot <- ggplot(
+      data,
+      aes(x = difficulty,
+          y = acc,
+          fill = condition,
+          colour = condition,
+          group = interaction(difficulty, association))
+    ) +
+      geom_flat_violin(
+        position = position_dodge(width = dodge_width),
+        adjust = 1.2,
+        trim = FALSE,
+        alpha = 0.7,
+        scale = "width"
+      ) +
+      geom_jitter(
+        aes(y = acc + acc_y_offset),
+        position = position_jitterdodge(
+          dodge.width = dodge_width,
+          jitter.height = 0,
+          seed = 123
+        ),
+        alpha = 0.4,
+        size = 0.6,
+        show.legend = FALSE
+      ) +
+      geom_boxplot(
+        aes(y = acc + acc_y_offset),
+        outlier.shape = NA,
+        width = 0.07,
+        colour = "black",
+        fill = NA,
+        position = position_dodge(width = dodge_width),
+        show.legend = FALSE
+      ) +
+      ylab("ACC") +
+      xlab("") +
+      coord_flip() +
+      scale_y_continuous(breaks = seq(0, 1, by = 0.2), limits = c(0, 1)) +
+      scale_fill_manual(values = color_palette) +
+      scale_colour_manual(values = color_palette) +
+      theme_cowplot() +
+      papaja::theme_apa() +
+      guides(fill = "none", colour = "none") +
+      theme(
+        axis.title.x = element_text(size = 30, margin = margin(t = 8)),
+        axis.text.x = element_text(size = 30),
+        axis.text.y = element_text(size = 30),
+        axis.ticks.y = element_line(size = 0.5),
+        plot.margin = margin(t = 10, r = 5, b = 10, l = 10)
+      )
+    
+    # ---------------------- 辨别任务-RT图 ----------------------
+    rt_plot <- ggplot(
+      data,
+      aes(x = difficulty,
+          y = rt,
+          fill = condition,
+          colour = condition,
+          group = interaction(difficulty, association))
+    ) +
+      geom_flat_violin(
+        position = position_dodge(width = dodge_width),
+        adjust = 1.2,
+        trim = FALSE,
+        alpha = 0.7,
+        scale = "width"
+      ) +
+      geom_jitter(
+        aes(y = rt + rt_y_offset),
+        position = position_jitterdodge(
+          dodge.width = dodge_width,
+          jitter.height = 0,
+          seed = 123
+        ),
+        alpha = 0.4,
+        size = 0.6,
+        show.legend = FALSE
+      ) +
+      geom_boxplot(
+        aes(y = rt + rt_y_offset),
+        outlier.shape = NA,
+        width = 0.07,
+        colour = "black",
+        fill = NA,
+        position = position_dodge(width = dodge_width),
+        show.legend = FALSE
+      ) +
+      ylab("RT (ms)") +
+      xlab("") +
+      coord_flip() +
+      scale_y_continuous(breaks = seq(1000, 2000, by = 1000)) +
+      scale_fill_manual(values = color_palette, name = "关联类型") +
+      scale_colour_manual(values = color_palette) +
+      theme_cowplot() +
+      papaja::theme_apa() +
+      guides(
+        fill = guide_legend(order = 1, title = "关联类型"),
+        colour = "none"
+      ) +
+      theme(
+        axis.title.x = element_text(size = 30, margin = margin(t = 8)),
+        axis.text.x = element_text(size = 30),
+        axis.text.y = element_text(size = 30),
+        axis.ticks.y = element_line(size = 0.5),
+        legend.title = element_text(size = 28),
+        legend.text = element_text(size = 28),
+        legend.key.size = unit(2, "cm"),
+        plot.margin = margin(t = 10, r = 10, b = 10, l = 0)
+      ) 
+  }
+  
+  # -------------------------- 统一组合布局（两种任务共用） --------------------------
+  plot_title <- paste0(task, " ", group)
+  combined_plot <- rt_plot + acc_plot +
+    plot_layout(
+      ncol = 2, 
+      widths = c(1.1, 0.9),
+      guides = "collect"
+    ) &
+    theme(legend.position = "right")
+  
+  print(combined_plot)
+  return(invisible(combined_plot))
+}
+```
+
 
 ### 匹配任务
 ```{r}
 
 # 调用函数
-matching_task_analysis(data_motion_rt_acc, "match_RDK")
-matching_task_analysis(data_color_rt_acc, "match_RDK")
+# -------------------------- 调用与保存 --------------------------
+
+p <- matching_task_analysis(data_motion_rt_acc, task = "match_RDK")
+
+# 保存图
+ggsave(
+  filename = file.path(output_path, "motion_match_rt_acc.svg"),
+  plot = p,
+  width = 16,    # 宽度12英寸
+  height = 12,    # 高度8英寸
+  dpi = 600,     # 600dpi
+  bg = "white"   # 强制白色背景，避免透明背景
+)
+
+p <- matching_task_analysis(data_color_rt_acc, "match_RDK")
+ggsave(
+  filename = file.path(output_path, "color_match_rt_acc.svg"),
+  plot = p,
+  width = 16,    
+  height = 12,    
+  dpi = 600,   
+  bg = "white"  
+)
 ```
 
 ### 辨别任务
 ```{r}
 
 # 调用函数
-matching_task_analysis(data_motion_rt_acc, "RDK")
-matching_task_analysis(data_color_rt_acc, "RDK")
+p <- matching_task_analysis(data_motion_rt_acc, "RDK")
+ggsave(
+  filename = file.path(output_path, "motion_rdk_rt_acc.svg"),
+  plot = p,
+  width = 16,    
+  height = 12,    
+  dpi = 600,    
+  bg = "white"  
+)
+
+p <- matching_task_analysis(data_color_rt_acc, "RDK")
+ggsave(
+  filename = file.path(output_path, "color_rdk_rt_acc.svg"),
+  plot = p,
+  width = 16,    
+  height = 12,    
+  dpi = 600,    
+  bg = "white"  
+)
 ```
 
 ```{r}
-# 整合两个任务的可视化函数（带被试连线 + 全包名前缀）
+# 整合两个任务的可视化函数
 task_combined_analysis <- function(data, task1 = "match_RDK", task2 = "RDK") {
   
-  # 获取数据名并提取组别（仅使用基础R函数，无需包前缀）
+  # 获取组别名称
   data_name <- deparse(substitute(data))
   split_result <- strsplit(data_name, "_")[[1]]
   group <- ifelse(length(split_result)>=2, split_result[2], "Unknown")
   group <- paste(group, collapse = "_")
   
-  # 数据预处理：合并两个任务的数据，统一格式（所有函数带包前缀）
+  # 数据预处理
   data_combined <- data %>% 
-    # dplyr::filter 筛选两个任务的数据
     dplyr::filter(part %in% c(task1, task2)) %>% 
-    # dplyr::mutate 标准化任务名称、转换因子
     dplyr::mutate(
       task = dplyr::case_when(
-        part == task1 ~ "Matching Task",  # 匹配任务
-        part == task2 ~ "Discrimination Task",  # 辨别任务
+        part == task1 ~ "Matching Task",
+        part == task2 ~ "Discrimination Task",
         TRUE ~ part
       ),
-      difficulty = base::as.factor(difficulty),  # 难度转为因子（base是R基础包）
-      subj_idx = base::as.factor(subj_idx)       # 被试ID转为因子（用于连线）
+      # 固定顺序：匹配在前，辨别在后
+      task = base::factor(task, levels = c("Matching Task", "Discrimination Task")),
+      difficulty = base::as.factor(difficulty),
+      subj_idx = base::as.factor(subj_idx)
     ) %>% 
-    # tidyr::drop_na 移除缺失值
     tidyr::drop_na(acc, rt)
   
-  # 定义配色方案（任务+难度组合）
   n_difficulty <- base::length(base::unique(data_combined$difficulty_code))
   color_palette <- RColorBrewer::brewer.pal(base::min(n_difficulty, 8), "Set2")
   if (n_difficulty > base::length(color_palette)) {
     color_palette <- base::rep(color_palette, length.out = n_difficulty)
   }
-  base::names(color_palette) <- base::unique(data_combined$difficulty_code)  # 难度对应颜色
+  base::names(color_palette) <- base::unique(data_combined$difficulty_code)
   
-  # ========== ACC 图（带被试连线） ==========
+  # ===================== ACC 图 =====================
   acc_plot <- ggplot2::ggplot(data_combined, ggplot2::aes(x = task, y = acc)) +
-    # 箱线图：黑色边框，突出分布（ggplot2::geom_boxplot）
     ggplot2::geom_boxplot(
-      ggplot2::aes(x = task, y = acc), 
-      outlier.shape = NA, 
-      alpha = 0.5, 
-      width = .1, 
-      colour = "BLACK",
-      fill = NA
+      outlier.shape = NA, alpha = 0.5, width = 0.18, colour = "black", fill = NA
     ) +
-    # 被试散点：按难度着色（ggplot2::geom_jitter）
     ggplot2::geom_jitter(
-      ggplot2::aes(color = difficulty_code), 
-      width = 0.05, 
-      size = 1, 
-      alpha = 0.5
+      ggplot2::aes(color = difficulty_code), width = 0.08, size = 1.1, alpha = 0.5
     ) +
-    # 被试连线：同一被试在两个任务间的连线（ggplot2::geom_line）
     ggplot2::geom_line(
-      ggplot2::aes(group = base::interaction(subj_idx, difficulty_code), color = difficulty_code), 
-      alpha = 0.3, 
-      linewidth = 0.5
+      ggplot2::aes(group = base::interaction(subj_idx, difficulty_code), color = difficulty_code),
+      alpha = 0.25, linewidth = 0.4
     ) +
-    # 分面：按难度拆分（每行一个难度）（ggplot2::facet_wrap）
     ggplot2::facet_wrap(~difficulty_code, nrow = n_difficulty) +
-    # 坐标轴设置（ggplot2::ylab/xlab/scale_y_continuous）
     ggplot2::ylab("Accuracy") + 
-    ggplot2::xlab("Task Type") + 
-    ggplot2::scale_y_continuous(breaks = base::seq(0, 1, by = 0.1), limits = c(0, 1)) +
-    # 配色应用（ggplot2::scale_fill_manual/scale_colour_manual）
-    ggplot2::scale_fill_manual(values = color_palette) +
+    ggplot2::xlab("Task") + 
+    ggplot2::scale_y_continuous(breaks = seq(0.3, 1, 0.1), limits = c(0.3, 1)) +
     ggplot2::scale_colour_manual(values = color_palette) +
-    # ggplot2::coord_flip() + 
-    # 主题优化（cowplot::theme_cowplot / ggplot2::guides/theme/element_text）
-    cowplot::theme_cowplot() + 
-    ggplot2::guides(fill = "none", colour = "none") +  # 隐藏图例（难度已在分面显示）
-    ggplot2::ggtitle(base::paste("Accuracy")) +
+    papaja::theme_apa() +
+    cowplot::theme_cowplot() +
+    ggplot2::guides(colour = "none") +
     ggplot2::theme(
-      plot.title = ggplot2::element_text(size = 14, hjust = 0.5, face = "bold"),
-      axis.text = ggplot2::element_text(size = 10),
-      axis.title = ggplot2::element_text(size = 12),
-      strip.text = ggplot2::element_text(size = 11, face = "bold")  # 分面标题（难度）加粗
+      plot.title = ggplot2::element_text(size = 18, hjust = 0.5, face = "bold"),
+      axis.text = ggplot2::element_text(size = 14),
+      axis.title = ggplot2::element_text(size = 16, face = "bold"),
+      strip.text = ggplot2::element_text(size = 14, face = "bold"),
+      panel.spacing = ggplot2::unit(0.4, "cm")
     )
   
-  # ========== RT 图（带被试连线） ==========
+  # ===================== RT 图 =====================
   rt_plot <- ggplot2::ggplot(data_combined, ggplot2::aes(x = task, y = rt)) +
-    # 箱线图：黑色边框（ggplot2::geom_boxplot）
     ggplot2::geom_boxplot(
-      ggplot2::aes(x = task, y = rt), 
-      outlier.shape = NA, 
-      alpha = 0.5, 
-      width = .1, 
-      colour = "BLACK",
-      fill = NA
+      outlier.shape = NA, alpha = 0.5, width = 0.18, colour = "black", fill = NA
     ) +
-    # 被试散点：按难度着色（ggplot2::geom_jitter）
     ggplot2::geom_jitter(
-      ggplot2::aes(color = difficulty_code), 
-      width = 0.05, 
-      size = 1, 
-      alpha = 0.5
+      ggplot2::aes(color = difficulty_code), width = 0.08, size = 1.1, alpha = 0.5
     ) +
-    # 被试连线：同一被试在两个任务间的连线（ggplot2::geom_line）
     ggplot2::geom_line(
-      ggplot2::aes(group = base::interaction(subj_idx, difficulty_code), color = difficulty_code), 
-      alpha = 0.3, 
-      linewidth = 0.5
+      ggplot2::aes(group = base::interaction(subj_idx, difficulty_code), color = difficulty_code),
+      alpha = 0.25, linewidth = 0.4
     ) +
-    # 分面：按难度拆分（ggplot2::facet_wrap）
     ggplot2::facet_wrap(~difficulty_code, nrow = n_difficulty) +
-    # 坐标轴设置（ggplot2::ylab/xlab）
     ggplot2::ylab("Reaction Time (ms)") + 
-    ggplot2::xlab("Task Type") + 
-    # 配色应用（ggplot2::scale_fill_manual/scale_colour_manual）
-    ggplot2::scale_fill_manual(values = color_palette) +
+    ggplot2::xlab("Task") + 
     ggplot2::scale_colour_manual(values = color_palette) +
-    # ggplot2::coord_flip() + 
-    # 主题优化（cowplot::theme_cowplot）
-    cowplot::theme_cowplot() + 
-    ggplot2::guides(fill = "none", colour = "none") +
-    ggplot2::ggtitle(base::paste("Reaction Time")) +
+    papaja::theme_apa() +
+    cowplot::theme_cowplot() +
+    ggplot2::guides(colour = "none") +
     ggplot2::theme(
-      plot.title = ggplot2::element_text(size = 14, hjust = 0.5, face = "bold"),
-      axis.text = ggplot2::element_text(size = 10),
-      axis.title = ggplot2::element_text(size = 12),
-      strip.text = ggplot2::element_text(size = 11, face = "bold")
+      plot.title = ggplot2::element_text(size = 18, hjust = 0.5, face = "bold"),
+      axis.text = ggplot2::element_text(size = 14),
+      axis.title = ggplot2::element_text(size = 16, face = "bold"),
+      strip.text = ggplot2::element_text(size = 14, face = "bold"),
+      panel.spacing = ggplot2::unit(0.4, "cm")
     )
   
-  # ========== 组合ACC和RT图 ==========
+  # ===================== 组合拼图 =====================
   combined_plot <- acc_plot + rt_plot +
     patchwork::plot_annotation(
-      title = base::paste(group),
-      theme = ggplot2::theme(plot.title = ggplot2::element_text(size = 16, hjust = 0.5, face = "bold"))
+      title = group,
+      theme = ggplot2::theme(
+        plot.title = ggplot2::element_text(size = 20, hjust = 0.5, face = "bold")
+      )
     ) +
-    patchwork::plot_layout(ncol = 2, widths = c(1, 1))  # 两列布局，比例均匀
+    patchwork::plot_layout(ncol = 2, widths = c(1, 1))
   
-  # 打印组合图（基础R函数print）
   base::print(combined_plot)
-  
-  # 返回图对象（方便保存）
   return(base::invisible(combined_plot))
 }
-
-# ========== 补充：如果你想改用papaja::theme_apa()主题 ==========
-# 只需将函数中所有 cowplot::theme_cowplot() 替换为 papaja::theme_apa()，示例：
-# acc_plot <- acc_plot + papaja::theme_apa()
-# rt_plot <- rt_plot + papaja::theme_apa()
 ```
 
 ```{r}
-plot_result_motion <- task_combined_analysis(data_motion_rt_acc, task1 = "match_RDK", task2 = "RDK")
-plot_result_color <- task_combined_analysis(data_color_rt_acc, task1 = "match_RDK", task2 = "RDK")
+# plot_result_motion <- task_combined_analysis(data_motion_rt_acc, task1 = "match_RDK", task2 = "RDK")
+# plot_result_color <- task_combined_analysis(data_color_rt_acc, task1 = "match_RDK", task2 = "RDK")
+# 保存
+ggplot2::ggsave(
+  plot =plot_result_motion,
+  width = 12,
+  filename = "Fig/data_preview_motion.svg"
+)
+ggplot2::ggsave(
+  plot =plot_result_color,
+  width = 12,
+  filename = "Fig/data_preview_color.svg" 
+)
 ```
 
 ```{r}
@@ -832,7 +1460,7 @@ diff_difficulty_simple <- function(
   data <- data %>% mutate(!!sym(difficulty_col) := as.factor(!!sym(difficulty_col)))
   difficulty_levels <- levels(data[[difficulty_col]])
   
-  # 生成所有难度的两两组合（不重复，如1&2、1&3，而非2&1）
+  # 生成所有难度的两两组合
   difficulty_combos <- combn(difficulty_levels, 2, simplify = FALSE)
   
   # 计算每对难度的ACC和RT差值
@@ -872,7 +1500,7 @@ diff_difficulty_simple <- function(
   cat("=== 不同难度下ACC和RT的两两差值（按ACC差值大小排序）===\n")
   print(diff_results)
   
-  # 可视化差值（可选，直观看差异）
+  # 可视化差值
   diff_plot <- diff_results %>%
     select(难度组合, ACC差值, RT差值) %>%
     pivot_longer(cols = c(ACC差值, RT差值), names_to = "指标", values_to = "差值") %>%
