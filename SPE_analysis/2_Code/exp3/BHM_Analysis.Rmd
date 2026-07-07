@@ -1,0 +1,428 @@
+---
+title: "Analysis of exp2"
+author: "wusiyu"
+date: "2026-07-05"
+output: html_document
+---
+
+# 环境与R包配置
+```{r}
+# 配置环境
+# rm(list = ls())   # 清除当前工作环境中所有对象（变量、函数等）
+
+# if (.Platform$OS.type == 'windows') {
+#         Sys.setlocale(category = 'LC_ALL','en_US.UTF-8')   # 使用UTF-8编码
+# } 
+
+# 安装cmdstanr作为后端
+if (!require(cmdstanr)){
+        install.packages("cmdstanr", repos = c('https://stan-dev.r-universe.dev', getOption("repos")))
+        library(cmdstanr)
+}
+
+# set_cmdstan_path('C:/Users/HW/.cmdstan/cmdstan-2.36.0')   # 设置cmdstan路径：填写包的安装位置所在路径
+
+# setwd("C:/1_Postgraduate/2_Lab/1_My_JC_Reports/2_methods/Tmp_BHM")   # 设置工作目录，自定义
+curDir = getwd()   # 获取当前工作路径
+curDir
+set.seed(42)   # 随机种子，确保结果可复现
+knitr::opts_chunk$set(cache.extra = knitr::rand_seed)# 设置缓存，若随机数未变化则不重复运行已运行的代码块
+
+
+# 配置R包
+if (!require(pacman)){
+        install.packages("pacman")
+        library(pacman)
+}
+
+pacman::p_load(
+  "rstan",
+  "tidyverse",  # 数据处理
+  "ggplot2", # 数据可视化
+  "brms", # 贝叶斯建模
+  "bayesplot",  # 贝叶斯绘图
+  "bridgesampling",   # 计算贝叶斯因子
+  "papaja"   # 论文格式
+)
+```
+
+# 数据预处理
+```{r data_preprocess}
+# load in function
+# source(here::here("SPE_analysis", "Code", "Functions", "Function_run_lmer.R"))
+# 改为相对路径
+source("Functions/Function_run_lmer.R")
+
+# set paths
+# dataPath = here::here("SPE_analysis/Data/exp1a/CleanData/")
+# resultDir = here::here("SPE_analysis/Data/exp1a/CleanData/")
+# 改为相对路径
+dataPath <- "../../3_Data/exp3/CleanData/"
+
+# load in data
+data_all <- read.csv(file = file.path(dataPath, "data_all.csv")) %>%
+  dplyr::mutate(
+    # R默认将因子第一个水平编码为0，其余为1，生成哑变量编码矩阵
+    association = factor(association, levels = c("self", "other")),
+    task_type = factor(task_type, levels = c("overlap", "relevant", "irrelevant"))
+)
+
+# data_all$task_type <- factor(data_all$task_type)
+# data_all$task_type <- relevel(data_all$task_type, ref = "relevant")
+```
+
+
+
+# 1 检验假设一（关联*任务）
+## 1.1 RT
+### 1. 模型拟合
+```{r warning=FALSE}
+data_all$rt <- data_all$rt * 1000
+m1_rt <- data_all %>%
+  dplyr::filter(correct == 1) %>%
+  brms::brm(
+    rt ~ association*task_type*difficulty + (1 + association*task_type*difficulty|subj_idx),
+    data = .,  # 模型设定随实验设计变化
+    family=lognormal(),
+    chains = 4,   
+    warmup = 500,  
+    iter = 2000,  
+    thin = 1, 
+    control = list(adapt_delta = .95),   # 用于减少采样发散
+    cores = parallel::detectCores(),   # 使用所有可用核心
+    backend = 'cmdstanr',   # rstan（默认）；cmdstanr：基于 Stan 的现代 C++ 
+    save_pars = save_pars(all = TRUE),
+    # file = file.path(curDir, "glmmModels/m1_rt")   # 缓存模型
+)
+```
+
+### 2. 模型评估
+```{r}
+summary(m1_rt)
+```
+
+### 3. 后验预测
+```{r}
+pp_check(m1_rt, type = "dens_overlay")
+```
+
+### 4. 统计推断
+
+```{r}
+# 固定效应，各个条件下反应时分布
+df_rt_pop <- m1_rt %>%
+  tidybayes::gather_draws(`b_.*`, regex = TRUE) %>%
+  dplyr::rename(term = .variable,
+                pop_mean = .value) %>%  # gather_draws会将变量存储为1列，所有的值存储为另一列
+  dplyr::ungroup() %>%
+  dplyr::mutate(term = gsub("b_", "", term))%>%
+  tidyr::pivot_wider(names_from = c(term), values_from = pop_mean) %>%   # long to wide
+  # 计算各条件反应时分布
+  dplyr::mutate(
+    self_overlap = Intercept,   #  self和overlap作为基线  
+    other_overlap = Intercept  + associationother,
+    self_irrelevant = Intercept  + task_typeirrelevant,
+    other_irrelevant = Intercept  + task_typeirrelevant + associationother +`associationother:task_typeirrelevant` ,
+    self_relevant = Intercept  + task_typerelevant,
+    other_relevant = Intercept + associationother + task_typerelevant + `associationother:task_typerelevant`
+    )%>%
+  dplyr::select(`.chain`, `.iteration`, `.draw`,
+                self_overlap, other_overlap,
+                self_irrelevant, other_irrelevant,
+                self_relevant, other_relevant) %>%
+  # wide to long
+  tidyr::pivot_longer(cols = self_irrelevant:other_relevant, names_to = "term", values_to =  "value") %>%  
+  dplyr::mutate(term = factor(term, levels = c(
+    'self_overlap', 'other_overlap', 
+    'self_irrelevant', 'other_irrelevant', 
+    'self_relevant', 'other_relevant'
+  )),
+  # log还原
+  value = exp(value))
+  # value = value *1000)
+
+df_rt_pop
+```
+
+```{r}
+# 固定效应，条件间差异分布
+df_rt_pop_diff_wide <- df_rt_pop %>%
+  tidyr::pivot_wider(names_from = c(term), values_from = value) %>%
+  dplyr::mutate(
+    diff_os_overlap = other_overlap - self_overlap,
+    diff_os_irrelevant = other_irrelevant - self_irrelevant,
+    diff_os_relevant = other_relevant - self_relevant
+  ) %>%
+  dplyr::select(`.chain`, `.iteration`, `.draw`, diff_os_overlap,
+    diff_os_irrelevant, diff_os_relevant)
+
+df_rt_pop_diff_wide
+```
+
+```{r}
+# 固定效应，后验分布描述
+df_rt_fixed <- df_rt_pop%>%
+  tidyr::pivot_wider(.,
+                     id_cols = c('.chain', '.iteration', '.draw'),
+                     names_from = term ) %>%
+  dplyr::select(-c('.chain', '.iteration', '.draw')) %>%
+  bayestestR::describe_posterior(.,
+                                 ci = 0.95,
+                                 ci_method = 'hdi',
+                                 test = c("p_direction", "p_significance"),
+                                 centrality = "median") %>%
+  tidyr::separate(Parameter, c('association', 'task_type')) %>%
+  dplyr::mutate(association = factor(association, levels = c('self', 'other')),
+                task_type = factor(task_type, levels = c('overlap','irrelevant', 'relevant')))
+
+summary(df_rt_fixed)
+```
+
+
+```{r}
+# 基于sexit框架进行统计推断（改）
+bayestestR::sexit(df_rt_pop_diff_wide[,c(4:6)])
+```
+
+### 5. 结果可视化
+
+```{r}
+# 绘制各个条件反应时差异的后验分布（固定效应）
+
+# 绘图数据
+df_rt_pop_diff <- df_rt_pop_diff_wide %>%
+  # wide to long
+  tidyr::pivot_longer(
+    cols = diff_os_overlap:diff_os_relevant,
+    names_to = "term_diff",
+    values_to =  "value"
+  ) %>%
+  dplyr::mutate(term_diff = factor(
+    term_diff,
+    levels = c(
+      'diff_os_overlap','diff_os_relevant','diff_os_irrelevant'),
+    labels = c(
+      "(RT[他人] - RT[自我])[任务重合]",
+      "(RT[他人] - RT[自我])[任务相关]",
+      "(RT[他人] - RT[自我])[任务无关]"
+    )
+  ))
+
+
+p_rt_diff <- df_rt_pop_diff %>%
+  ggplot2::ggplot(aes(x = value, fill = after_stat(x > 0))) +   # RT：self快于friend/stranger,用RT长的-短的
+  tidybayes::stat_halfeye() +
+  geom_vline(xintercept = 0, linetype = "dashed") + # 添加x=0的垂线
+  scale_fill_manual(
+    values = c('#E74C3C', '#2980B9'),# 蓝色出现在true组，红色出现在false组
+    breaks = c(TRUE, FALSE),
+    name = "反应时差异" ,
+    labels = c(">0", "<0")# 标签yes表示x<0
+  ) +
+  xlab("反应时差异后验分布") +
+ facet_wrap( ~ term_diff, nrow = 2, 
+              labeller = labeller(term_diff = label_parsed))+
+  papaja::theme_apa() +
+  
+  # ===================== 格式调整  =====================
+  ggplot2::theme(
+    # 1. 增大分面间距，避免标题和坐标轴重叠
+    panel.spacing = ggplot2::unit(1.2, "cm"),  # 上下分面之间的间距
+    plot.margin = ggplot2::unit(c(1, 1, 1, 1), "cm"),  # 整个图的外边距
+    
+    # 2. 调整坐标轴标题边距，避免和刻度/图例重叠
+    axis.title.x = ggplot2::element_text(size = 16, face = "bold", margin = ggplot2::margin(t = 15)),
+    axis.text.x = ggplot2::element_text(size = 14),
+    axis.text.y = ggplot2::element_text(size = 14),
+    
+    # 3. 调整分面标题边距，避免和上一个分面的坐标轴重叠
+    strip.text = ggplot2::element_text(size = 15, face = "bold", margin = ggplot2::margin(b = 10, t = 10)),
+    
+    # 4. 调整图例位置和边距，避免和图重叠
+    legend.position = "right",
+    legend.title = ggplot2::element_text(size = 14, margin = ggplot2::margin(b = 5)),
+    legend.text = ggplot2::element_text(size = 13),
+    legend.box.margin = ggplot2::margin(r = 10)  # 图例和图之间的间距
+  )
+
+p_rt_diff
+
+# ggsave(file.path(figDir, "motion_match_acc_diff.png"))
+```
+
+
+## 1.2 ACC
+### 1. 模型拟合
+```{r warning=FALSE}
+# iter=1000,Total execution time: 852.2 seconds..18mins
+m2_acc <- data_all %>%
+  # dplyr::mutate(correct = ifelse(correct == "true", 1, 0)) %>%
+  brms::brm(
+    correct ~ association*task_type*difficulty + (1 + association*task_type*difficulty|subj_idx),
+    data = .,  # 模型设定随实验设计变化
+    family = "bernoulli",
+    chains = 4,   
+    warmup = 500,  
+    iter = 2000,  
+    thin = 1, 
+    control = list(adapt_delta = .95),   # 用于减少采样发散
+    cores = parallel::detectCores(),   # 使用所有可用核心
+    backend = 'cmdstanr',   # rstan（默认）；cmdstanr：基于 Stan 的现代 C++ 
+    save_pars = save_pars(all = TRUE),
+    # file = file.path(curDir, "glmmModels/m4_rdk_acc")   # 缓存模型
+)
+```
+
+### 2. 模型评估
+```{r}
+summary(m2_acc)
+```
+
+### 3. 后验预测
+```{r}
+pp_check(m2_acc, type = "dens_overlay")
+```
+
+### 4. 统计推断
+
+```{r}
+# 固定效应，各个条件下反应时分布
+df_acc_pop <- m2_acc %>%
+  tidybayes::gather_draws(`b_.*`, regex = TRUE) %>%
+  dplyr::rename(term = .variable,
+                pop_mean = .value) %>%  # gather_draws会将变量存储为1列，所有的值存储为另一列
+  dplyr::ungroup() %>%
+  dplyr::mutate(term = gsub("b_", "", term))%>%
+  tidyr::pivot_wider(names_from = c(term), values_from = pop_mean) %>%   # long to wide
+  # 计算各条件反应时分布
+  dplyr::mutate(
+    self_overlap = Intercept,   #  self和overlap作为基线  
+    other_overlap = Intercept  + associationother,
+    self_irrelevant = Intercept  + task_typeirrelevant,
+    other_irrelevant = Intercept  + task_typeirrelevant + associationother +`associationother:task_typeirrelevant` ,
+    self_relevant = Intercept  + task_typerelevant,
+    other_relevant = Intercept + associationother + task_typerelevant + `associationother:task_typerelevant`
+    )%>%
+  dplyr::select(`.chain`, `.iteration`, `.draw`,
+                self_overlap, other_overlap,
+                self_irrelevant, other_irrelevant,
+                self_relevant, other_relevant) %>%
+  # wide to long
+  tidyr::pivot_longer(cols = self_irrelevant:other_relevant, names_to = "term", values_to =  "value") %>%  
+  dplyr::mutate(term = factor(term, levels = c(
+    'self_overlap', 'other_overlap', 
+    'self_irrelevant', 'other_irrelevant', 
+    'self_relevant', 'other_relevant'
+  )))
+  # log还原
+  # value = exp(value))
+  # value = value *1000)
+
+df_acc_pop
+```
+
+```{r}
+# 固定效应，条件间差异分布
+df_acc_pop_diff_wide <- df_acc_pop %>%
+  tidyr::pivot_wider(names_from = c(term), values_from = value) %>%
+  dplyr::mutate(
+    diff_so_overlap = self_overlap - other_overlap,
+    diff_so_irrelevant = self_irrelevant - other_irrelevant,
+    diff_so_relevant = self_relevant - other_relevant
+  ) %>%
+  dplyr::select(`.chain`, `.iteration`, `.draw`, diff_so_overlap,
+    diff_so_irrelevant, diff_so_relevant)
+
+df_acc_pop_diff_wide
+```
+
+```{r}
+# 固定效应，后验分布描述
+df_acc_fixed <- df_acc_pop%>%
+  tidyr::pivot_wider(.,
+                     id_cols = c('.chain', '.iteration', '.draw'),
+                     names_from = term ) %>%
+  dplyr::select(-c('.chain', '.iteration', '.draw')) %>%
+  bayestestR::describe_posterior(.,
+                                 ci = 0.95,
+                                 ci_method = 'hdi',
+                                 test = c("p_direction", "p_significance"),
+                                 centrality = "median") %>%
+  tidyr::separate(Parameter, c('association', 'task_type')) %>%
+  dplyr::mutate(association = factor(association, levels = c('self', 'other')),
+                task_type = factor(task_type, levels = c('overlap','irrelevant', 'relevant')))
+
+summary(df_acc_fixed)
+```
+
+
+```{r}
+# 基于sexit框架进行统计推断（改）
+bayestestR::sexit(df_acc_pop_diff_wide[,c(4:6)])
+```
+
+### 5. 结果可视化
+```{r}
+# p2：绘制各个条件反应时差异的后验分布（固定效应）
+
+# 绘图数据
+df_acc_pop_diff <- df_acc_pop_diff_wide %>%
+  # wide to long
+  tidyr::pivot_longer(
+    cols = diff_so_overlap:diff_so_relevant,
+    names_to = "term_diff",
+    values_to =  "value"
+  ) %>%
+  dplyr::mutate(term_diff = factor(
+    term_diff,
+    levels = c(
+      'diff_so_overlap','diff_so_relevant','diff_so_irrelevant'),
+    labels = c(
+      "(correct[自我] - correct[他人])[任务重合]",
+      "(correct[自我] - correct[他人])[任务相关]",
+      "(correct[自我] - correct[他人])[任务无关]"
+    )
+  ))
+
+
+p_acc_diff <- df_acc_pop_diff %>%
+  ggplot2::ggplot(aes(x = value, fill = after_stat(x > 0))) +   # RT：self快于friend/stranger,用RT长的-短的
+  tidybayes::stat_halfeye() +
+  geom_vline(xintercept = 0, linetype = "dashed") + # 添加x=0的垂线
+  scale_fill_manual(
+    values = c('#E74C3C', '#2980B9'),# 蓝色出现在true组，红色出现在false组
+    breaks = c(TRUE, FALSE),
+    name = "正确率差异" ,
+    labels = c(">0", "<0")# 标签yes表示x<0
+  ) +
+  xlab("正确率差异后验分布") +
+ facet_wrap( ~ term_diff, nrow = 2, 
+              labeller = labeller(term_diff = label_parsed))+
+  papaja::theme_apa() +
+  
+  # ===================== 格式调整  =====================
+  ggplot2::theme(
+    # 1. 增大分面间距，避免标题和坐标轴重叠
+    panel.spacing = ggplot2::unit(1.2, "cm"),  # 上下分面之间的间距
+    plot.margin = ggplot2::unit(c(1, 1, 1, 1), "cm"),  # 整个图的外边距
+    
+    # 2. 调整坐标轴标题边距，避免和刻度/图例重叠
+    axis.title.x = ggplot2::element_text(size = 16, face = "bold", margin = ggplot2::margin(t = 15)),
+    axis.text.x = ggplot2::element_text(size = 14),
+    axis.text.y = ggplot2::element_text(size = 14),
+    
+    # 3. 调整分面标题边距，避免和上一个分面的坐标轴重叠
+    strip.text = ggplot2::element_text(size = 15, face = "bold", margin = ggplot2::margin(b = 10, t = 10)),
+    
+    # 4. 调整图例位置和边距，避免和图重叠
+    legend.position = "right",
+    legend.title = ggplot2::element_text(size = 14, margin = ggplot2::margin(b = 5)),
+    legend.text = ggplot2::element_text(size = 13),
+    legend.box.margin = ggplot2::margin(r = 10)  # 图例和图之间的间距
+  )
+
+p_acc_diff
+
+# ggsave(file.path(figDir, "motion_match_acc_diff.png"))
+```
+
