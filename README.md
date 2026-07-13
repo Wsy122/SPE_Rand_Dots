@@ -22,6 +22,11 @@ This repository contains two experiments examining different aspects of the SPE:
   - `Difficulty`: easy (~85% accuracy threshold) vs. difficult (~70% accuracy threshold)
   - `Task relevance`: target-overlapped vs. target-independent
 
+### Experiment 3:
+- **2 × 3 within-subject design**:
+  - `Association type`: self-related vs. stranger-related
+  - `Task type`: identity vs. self-relevant feature vs. self-irrelevant feature
+
 ## Folder Structure
 ```
 1_Procedure/
@@ -34,14 +39,22 @@ This repository contains two experiments examining different aspects of the SPE:
 │ │ └─ getThreshold.js
 │ └─ index.html # Main experiment page
 │
-└─ exp2/
-├─ img/ # Stimulus images
-├─ jspsych-7.0/ # jsPsych library
-├─ template_Expt/ # HTML and JavaScript templates
-│ ├─ color.js
-│ ├─ move.js
-│ └─ getThreshold.js
-└─ index.html # Main experiment page
+├─ exp2/
+│ ├─ img/ # Stimulus images
+│ ├─ jspsych-7.0/ # jsPsych library
+│ ├─ template_Expt/ # HTML and JavaScript templates
+│ │ ├─ color.js
+│ │ ├─ move.js
+│ │ └─ getThreshold.js
+│ └─ index.html # Main experiment page
+├─ exp3/
+│ ├─ img/ # Stimulus images
+│ ├─ jspsych-7.0/ # jsPsych library
+│ ├─ template_Expt/ # HTML and JavaScript templates
+│ │ ├─ color.js
+│ │ ├─ move.js
+│ │ └─ getThreshold.js
+│ └─ index.html # Main experiment page
 2_Code/
 ├─ exp1/
 │ ├─ HDDM/
@@ -51,12 +64,18 @@ This repository contains two experiments examining different aspects of the SPE:
 │ ├─ BHM_Analysis_motion.Rmd
 │ └─ BHM_Analysis_color.Rmd
 │
-└─ exp2/
-├─ HDDM/
-├─ Functions/
-├─ Data_clean.Rmd
-├─ SBFA_SPE.Rmd
-└─ BHM_Analysis.Rmd
+├─ exp2/
+│ ├─ HDDM/
+│ ├─ Functions/
+│ ├─ Data_clean.Rmd
+│ ├─ SBFA_SPE.Rmd
+│ └─ BHM_Analysis.Rmd
+├─ exp3/
+│ ├─ HDDM/
+│ ├─ Functions/
+│ ├─ Data_clean.Rmd
+│ ├─ SBFA_SPE.Rmd
+│ └─ BHM_Analysis.Rmd
 3_Data/
 ├─ exp1/
 │ ├─ RawData/ # Raw experimental data
