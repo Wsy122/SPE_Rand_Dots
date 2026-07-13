@@ -26,10 +26,10 @@
 
 ------------------------------------------------------------*/
 
-// 初始化存储数组（每个难度存储两次结果）
-window.coherence = new Array(4).fill(0);
-window.proportion = new Array(4).fill(0);
-window.colorProportion = new Array(4).fill(0);
+// 初始化存储数组（easy 存储两次结果）
+window.coherence = new Array(2).fill(0);
+window.proportion = new Array(2).fill(0);
+window.colorProportion = new Array(2).fill(0);
 var testOutputs = []; 
 
 var coherence_output ={
@@ -47,19 +47,17 @@ let currentCycleMunShape = 0;
 let shapeStage = 0;
 let index
 let initial_difficulty_shape_easy = 0.7;
-let initial_difficulty_shape_hard = 0.65;
 
-// 初始化每个难度的保存计数
-const shapeSaveCounts = { easy: 0, hard: 0 };
+// 初始化保存计数（仅 easy）
+const shapeSaveCounts = { easy: 0 };
 
 // 颜色（color）阶梯变量
 let currentCycleMunColor = 0;
 let colorStage = 0;
 let initial_difficulty_color_easy = 0.55;
-let initial_difficulty_color_hard = 0.52;
 
-// 初始化每个难度的保存计数
-const colorSaveCounts = { easy: 0, hard: 0 };
+// 初始化保存计数（仅 easy）
+const colorSaveCounts = { easy: 0 };
 
 // // 定义一个函数来计算索引
 // function getIndex(difficultyType) {
@@ -88,8 +86,6 @@ let instruction_getThreshold = {
       <p>测试包含两部分：<span style="font-weight: bold">形状判断</span>和<span style="font-weight: bold">颜色判断</span>。</p>
       <p>形状判断：判断散点图中哪种形状（圆形/正方形）的数量更多；</p>
       <p>颜色判断：判断散点图中哪种颜色（红色/蓝色）的数量更多。</p>
-      <p>测试过程中，散点图下方会显示对应的文字标签（"圆"和"方"或"红"和"蓝"），</p>
-      <p>请根据文字标签位置按对应的键：左侧按 <span style="font-weight: bold">F</span>，右侧按 <span style="font-weight: bold">J</span></p>
       <p>如有疑问请向主试咨询，没有则按下空格键开始</p>
     </div>`
   },
@@ -108,13 +104,13 @@ var instruction_taskSeparate_shape = {
     this.stimulus = `
     <div style="text-align: left; color: white; padding: 10px"> 
       <p>现在是形状判断</p>
-      <p>您需要<span style="font-weight: bold">忽略点的运动方向</span>并判断哪种形状的数量更多:</p >
+      <p>您需要<span style="font-weight: bold">忽略点的颜色</span>并判断哪种形状的数量更多</p >
+      <p>散点图下方会显示"圆"和"方"的文字标签，请根据文字位置按对应的键</p>
         <ul>
             <li>大多数为<span style="font-weight: bold">圆形</span>，请按对应文字标签所在侧的键（左侧按<span style="font-weight: bold">"F"键</span>，右侧按<span style="font-weight: bold">"J"键</span>）</li>
             <li>大多数为<span style="font-weight: bold">正方形</span>，请按对应文字标签所在侧的键（左侧按<span style="font-weight: bold">"F"键</span>，右侧按<span style="font-weight: bold">"J"键</span>）</li>
           </ul>
-      <p>散点图下方会显示"圆"和"方"的文字标签，请根据文字位置按对应的键</p>
-      <p>准备好后请按空格键开始</p>
+      <p>您需要完成两组判断，准备好后请按空格键开始</p>
     </div>`
   },
   response_ends_trial: true,
@@ -132,13 +128,13 @@ var instruction_taskSeparate_color = {
     this.stimulus = `
     <div style="text-align: left; color: white; padding: 10px"> 
       <p>现在是颜色判断</p>
-      <p>您需要<span style="font-weight: bold">忽略点的形状</span>并判断哪种颜色（红色或蓝色）的数量更多:</p >
+      <p>您需要<span style="font-weight: bold">忽略点的形状</span>并判断哪种颜色（红色或蓝色）的数量更多</p >
+      <p>散点图下方会显示"红"和"蓝"的文字标签，请根据文字位置按对应的键</p>
         <ul>
             <li>大多数为<span style="color: hsl(0, 50%, 50%)">红色</span>，请按对应文字标签所在侧的键（左侧按<span style="font-weight: bold">"F"键</span>，右侧按<span style="font-weight: bold">"J"键</span>）</li>
             <li>大多数为<span style="color: hsl(225, 50%, 50%)">蓝色</span>，请按对应文字标签所在侧的键（左侧按<span style="font-weight: bold">"F"键</span>，右侧按<span style="font-weight: bold">"J"键</span>）</li>
           </ul>
-      <p>散点图下方会显示"红"和"蓝"的文字标签，请根据文字位置按对应的键</p>
-      <p>准备好后请按空格键开始</p>
+      <p>您需要完成两组判断，准备好后请按空格键开始</p>
     </div>`
   },
   response_ends_trial: true,
@@ -180,22 +176,7 @@ const StaircaseShape1 = {
   },
 };
 
-const StaircaseShape2 = {
-  max: 0.58,
-  min: 0.62,
-  difficultyType: 'hard',
-  get: () => initial_difficulty_shape_hard,
-  set: (value) => {
-    value = parseFloat(value.toFixed(2));
-    initial_difficulty_shape_hard = value;
-    const index = 2 + shapeSaveCounts.hard; // hard存到数组索引2、3
-    window.proportion[index] = value;
-    shapeSaveCounts.hard++;
-    console.log('shapeProportionArray:', window.proportion);
-  },
-};
-
-// 颜色Staircase（StaircaseColor1/StaircaseColor2）
+// 颜色Staircase（StaircaseColor1）
 const StaircaseColor1 = {
   max: 0.55,
   min: 0.58,
@@ -207,21 +188,6 @@ const StaircaseColor1 = {
     const index = colorSaveCounts.easy;
     window.colorProportion[index] = value;
     colorSaveCounts.easy++;
-    console.log('colorProportionArray:', window.colorProportion);
-  },
-};
-
-const StaircaseColor2 = {
-  max: 0.51,
-  min: 0.54,
-  difficultyType: 'hard',
-  get: () => initial_difficulty_color_hard,
-  set: (value) => {
-    value = parseFloat(value.toFixed(2));
-    initial_difficulty_color_hard = value;
-    const index = 2 + colorSaveCounts.hard;
-    window.colorProportion[index] = value;
-    colorSaveCounts.hard++;
     console.log('colorProportionArray:', window.colorProportion);
   },
 };
@@ -238,12 +204,12 @@ let single_trial_shape = {
   dot_shape: function () { return jsPsych.timelineVariable("dot_shape") },
   choices: ["f", "j"],
   correct_choice: function () { return jsPsych.timelineVariable("correct_choice") },
-  dot_radius: 4.5,
-  move_distance: 2.4,
+  dot_radius: 5,
+  move_distance: 2.2,
   coherence: 0,
   coherent_direction: 0,
-  aperture_width: 370,
-  aperture_height: 370,
+  aperture_width: 400,
+  aperture_height: 400,
   background_color: "black",
   trial_duration: -1,
   data: {
@@ -301,12 +267,12 @@ let single_trial_color = {
   dot_shape_ratio: 0.5,
   choices: ["f", "j"],
   correct_choice: function () { return jsPsych.timelineVariable("correct_choice") },
-  dot_radius: 4.5,
-  move_distance: 2.4,
+  dot_radius: 5,
+  move_distance: 2.2,
   coherence: 0,
   coherent_direction: 0,
-  aperture_width: 370,
-  aperture_height: 370,
+  aperture_width: 400,
+  aperture_height: 400,
   background_color: "black",
   trial_duration: -1,
   data: {
@@ -501,15 +467,6 @@ let shape_easy = generateStaircaseTimeline({
   cycle: cycle_shape,
 });
 
-let shape_hard = generateStaircaseTimeline({
-  jsPsychInstance: jsPsych,
-  targetAccuracy: 0.70,
-  numberOfCycles: 1,
-  difficulty: StaircaseShape2,
-  dataLabel: 'staircase_shape',
-  cycle: cycle_shape,
-});
-
 let color_easy = generateStaircaseTimeline({
   jsPsychInstance: jsPsych,
   targetAccuracy: 0.85,
@@ -519,71 +476,21 @@ let color_easy = generateStaircaseTimeline({
   cycle: cycle_color,
 });
 
-let color_hard = generateStaircaseTimeline({
-  jsPsychInstance: jsPsych,
-  targetAccuracy: 0.70,
-  numberOfCycles: 1,
-  difficulty: StaircaseColor2,
-  dataLabel: 'staircase_color',
-  cycle: cycle_color,
-});
-
-let all_shape_blocks = [shape_easy, shape_hard];
-
-let all_shape_difficulty_blocks = [StaircaseShape1, StaircaseShape2];
-
-let combined_shape = all_shape_blocks.map((block, index) => ({
-  block,
-  difficulty: all_shape_difficulty_blocks[index]
-}));
-
-let sequential_combined_shape = combined_shape.slice(0, 2);
-let random_combined_shape = [...combined_shape].slice(0, 2).sort(() => Math.random() - 0.5);
-
-let combined_shape_order = sequential_combined_shape.concat(random_combined_shape);
-
+// 仅 easy 水平，运行2次取收敛值
 function setCurrentDifficultyShape(currentCycleMunShape) {
-  if (currentCycleMunShape < 0 || currentCycleMunShape >= combined_shape_order.length) {
-    console.error("Invalid currentCycleMunShape value:", currentCycleMunShape);
-    return null;
-  }
-  let currentDifficultyObject = combined_shape_order[currentCycleMunShape].difficulty;
-  let currentDifficulty = currentDifficultyObject.get();
-  console.log("currentDifficultyShape:" + currentDifficulty);
-  return currentDifficulty;
+  return StaircaseShape1.get();
 }
-
-// 颜色相关数组
-let all_color_blocks = [color_easy, color_hard];
-let all_color_difficulty_blocks = [StaircaseColor1, StaircaseColor2];
-let combined_color = all_color_blocks.map((block, index) => ({
-  block,
-  difficulty: all_color_difficulty_blocks[index]
-}));
-let sequential_combined_color = combined_color.slice(0, 2);
-let random_combined_color = [...combined_color].slice(0, 2).sort(() => Math.random() - 0.5);
-let combined_color_order = sequential_combined_color.concat(random_combined_color);
 
 function setCurrentDifficultyColor(currentCycleMunColor) {
-  if (currentCycleMunColor < 0 || currentCycleMunColor >= combined_color_order.length) {
-    console.error("Invalid currentCycleMunColor value:", currentCycleMunColor);
-    return null;
-  }
-  let currentDifficultyObject = combined_color_order[currentCycleMunColor].difficulty;
-  let currentDifficulty = currentDifficultyObject.get();
-  console.log("currentDifficultyColor:" + currentDifficulty);
-  return currentDifficulty;
+  return StaircaseColor1.get();
 }
 
-let shape_order = combined_shape_order.map(item => item.block);
-let color_order = combined_color_order.map(item => item.block);
-
 let full_block_shape = {
-  timeline: shape_order
+  timeline: [shape_easy, shape_easy]
 };
 
 let full_block_color = {
-  timeline: color_order
+  timeline: [color_easy, color_easy]
 };
 
 // 根据被试编号组别分配（形状 + 颜色，counterbalanced）
@@ -612,10 +519,10 @@ var group_color_first = {
   }
 };
 
-var assign_group = {
+var staircase_assign_group = {
   timeline: [group_shape_first, group_color_first]
 };
 
 getThreshold = {
-  timeline: [instruction_getThreshold, assign_group]
+  timeline: [instruction_getThreshold, staircase_assign_group]
 };
