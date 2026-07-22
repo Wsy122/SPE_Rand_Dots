@@ -81,7 +81,7 @@ data_all$rt <- data_all$rt * 1000
 m1_rt <- data_all %>%
   dplyr::filter(correct == 1) %>%
   brms::brm(
-    rt ~ association*task_type*difficulty + (1 + association*task_type*difficulty|subj_idx),
+    rt ~ association*task_type + (1 + association*task_type|subj_idx),
     data = .,  # 模型设定随实验设计变化
     family=lognormal(),
     chains = 4,   
@@ -258,7 +258,7 @@ p_rt_diff
 m2_acc <- data_all %>%
   # dplyr::mutate(correct = ifelse(correct == "true", 1, 0)) %>%
   brms::brm(
-    correct ~ association*task_type*difficulty + (1 + association*task_type*difficulty|subj_idx),
+    correct ~ association*task_type + (1 + association*task_type|subj_idx),
     data = .,  # 模型设定随实验设计变化
     family = "bernoulli",
     chains = 4,   
